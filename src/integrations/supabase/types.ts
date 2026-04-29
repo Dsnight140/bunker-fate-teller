@@ -140,44 +140,7 @@ export type Database = {
       }
     }
     Views: {
-      players_public: {
-        Row: {
-          id: string | null
-          is_host: boolean | null
-          joined_at: string | null
-          nickname: string | null
-          revealed: Json | null
-          room_id: string | null
-          status: string | null
-        }
-        Insert: {
-          id?: string | null
-          is_host?: boolean | null
-          joined_at?: string | null
-          nickname?: string | null
-          revealed?: Json | null
-          room_id?: string | null
-          status?: string | null
-        }
-        Update: {
-          id?: string | null
-          is_host?: boolean | null
-          joined_at?: string | null
-          nickname?: string | null
-          revealed?: Json | null
-          room_id?: string | null
-          status?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "players_room_id_fkey"
-            columns: ["room_id"]
-            isOneToOne: false
-            referencedRelation: "rooms"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
+      [_ in never]: never
     }
     Functions: {
       get_my_character: {
