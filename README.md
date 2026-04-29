@@ -1,3 +1,3 @@
-# Welcome to your Lovable project
+# БУНКЕР — игра на выживание
 
-TODO: Document your project here
+Многопользовательская игра с AI Game Master. Создай лобби по 4-значному коду, генерируй персонажей и переживи катастрофу.

@@ -13,7 +13,7 @@ const FIELDS: { key: string; label: string }[] = [
   { key: "baggage", label: "Багаж" },
   { key: "hobby", label: "Хобби" },
   { key: "traits", label: "Особенности" },
-  { key: "ability", label: "Спец-способность" },
+  { key: "abilities", label: "Спец-способности" },
 ];
 
 export function CharacterCard({
