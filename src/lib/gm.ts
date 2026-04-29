@@ -1,5 +1,5 @@
 // GM implementation using Groq API (FREE, fast, generous limits - console.groq.com)
-const GROQ_MODEL = "llama-3.3-70b-versatile"; // Smarter model for better content quality
+const GROQ_MODEL = "llama-3.1-8b-instant"; // Fast, stable, high limits
 
 async function callAI(systemPrompt: string, userPrompt: string, retries = 3): Promise<any> {
   const apiKey = import.meta.env.VITE_GROQ_API_KEY;

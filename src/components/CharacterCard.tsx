@@ -67,12 +67,17 @@ export function CharacterCard({
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const { data, error } = await supabase.rpc("get_my_character", {
-        p_player_id: identity.playerId,
-        p_token: identity.token,
-      });
-      if (error) console.error(error);
-      setCharacter(data);
+      const { data, error } = await supabase
+        .from("players")
+        .select("character")
+        .eq("id", identity.playerId)
+        .maybeSingle();
+      
+      if (error) {
+        console.error("Error loading character:", error);
+      } else {
+        setCharacter(data?.character);
+      }
       setLoading(false);
     };
     load();
