@@ -140,7 +140,7 @@ const epilogueSchema = {
 // ---------- Handler ----------
 const SYSTEM = `Ты — Game Master игры «Бункер». Твой стиль: мрачный, постапокалиптический, лаконичный. Только русский язык.
 Твоя задача — генерировать данные строго по запросу. Давай сложные пояснения к медицинским или техническим терминам в скобках.
-Если создаешь персонажа, делай его уникальным и противоречивым.`;
+Если создаешь персонажа, делай его уникальным и противоречивым. На лёгкой сложности персонажи должны иметь полезные навыки и способности.`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -161,15 +161,17 @@ serve(async (req) => {
         catastropheSchema
       );
     } else if (action === "character") {
+      const ageRange = payload?.ageRange || "любой";
+      const difficulty = payload?.difficulty || "среднее";
       result = await callAI(
         SYSTEM,
-        `Создай персонажа. Катастрофа: ${JSON.stringify(payload?.catastrophe)}. Ник: ${payload?.nickname}. Сделай упор на необычные способности.`,
+        `Создай персонажа. Возраст: ${ageRange} лет (ВАЖНО: варьируй возраст от 18 до 75, не повторяй 28). Сложность: ${difficulty} (на лёгкой давай больше полезных способностей). Катастрофа: ${JSON.stringify(payload?.catastrophe)}. Ник: ${payload?.nickname}. Характеристики должны быть разнообразными.`,
         characterSchema
       );
     } else if (action === "event") {
       result = await callAI(
         SYSTEM,
-        `Событие сложности ${payload?.difficulty || 'среднее'}. Игрок: ${JSON.stringify(payload?.player)}. Состояние ресурсов: ${JSON.stringify(payload?.bunker)}.`,
+        `Событие сложности ${payload?.difficulty || 'среднее'}. Игрок: ${JSON.stringify(payload?.player)}. Состояние ресурсов: ${JSON.stringify(payload?.bunker)}. На лёгкой сложности давай выживаемость 80-95%.`,
         eventSchema
       );
     } else if (action === "epilogue") {
@@ -178,6 +180,16 @@ serve(async (req) => {
         `ФИНАЛ. Выжившие: ${JSON.stringify(payload?.survivors)}. Ресурсы: ${JSON.stringify(payload?.bunker)}. Напиши итог их жизни.`,
         epilogueSchema
       );
+    } else if (action === "save_game_state") {
+      // Сохранение состояния игры
+      result = {
+        timestamp: new Date().toISOString(),
+        game_id: payload?.game_id,
+        players: payload?.players,
+        events: payload?.events || [],
+        current_bunker: payload?.bunker,
+        catastrophe: payload?.catastrophe,
+      };
     } else {
       throw new Error("Unknown action: " + action);
     }
