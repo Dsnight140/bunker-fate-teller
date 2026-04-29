@@ -8,7 +8,7 @@ async function callAI(systemPrompt: string, userPrompt: string, schema?: any, re
   const body: any = {
     contents: [{ role: "user", parts: [{ text: systemPrompt + "\n\n" + userPrompt }] }],
     generationConfig: {
-      temperature: 0.9,
+      temperature: 1.0,
       maxOutputTokens: 8192,
       responseMimeType: "application/json",
     },
@@ -34,9 +34,11 @@ async function callAI(systemPrompt: string, userPrompt: string, schema?: any, re
     
     const data = await r.json();
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error("AI returned empty response");
     return schema ? JSON.parse(text?.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim() || "{}") : text;
   } catch (e: any) {
-    if (retries > 0 && !e.message.includes("AI")) {
+    if (retries > 0) {
+      console.warn("Retrying AI call...", e);
       await new Promise(res => setTimeout(res, 4000));
       return callAI(systemPrompt, userPrompt, schema, retries - 1);
     }
@@ -52,7 +54,7 @@ const catastropheSchema = {
       properties: {
         name: { type: "STRING" },
         description: { type: "STRING" },
-        image_prompt: { type: "STRING", description: "Cinematic digital art prompt of the disaster, dark atmosphere" }
+        image_prompt: { type: "STRING" }
       },
       required: ["name", "description", "image_prompt"]
     },
@@ -61,6 +63,7 @@ const catastropheSchema = {
       properties: {
         capacity: { type: "INTEGER" },
         food_months: { type: "INTEGER" },
+        stay_years: { type: "INTEGER", description: "На сколько лет нужно укрыться" },
         objects: { 
           type: "ARRAY", 
           items: { 
@@ -68,15 +71,15 @@ const catastropheSchema = {
             properties: {
               name: { type: "STRING" },
               description: { type: "STRING" },
-              status: { type: "STRING", description: "Например: Исправен, Требует ремонта, Заблокирован" },
-              action: { type: "STRING", description: "Что можно сделать с объектом" }
+              status: { type: "STRING" },
+              action: { type: "STRING" }
             },
             required: ["name", "description", "status", "action"]
           }
         },
         description: { type: "STRING" }
       },
-      required: ["capacity", "food_months", "objects", "description"]
+      required: ["capacity", "food_months", "stay_years", "objects", "description"]
     }
   },
   required: ["catastrophe", "bunker"]
@@ -98,14 +101,14 @@ const characterSchema = {
         type: "OBJECT",
         properties: {
           id: { type: "STRING" },
-          type: { type: "STRING", description: "SPY, MUTATION, DOUBLE_VOTE, STEAL, UPGRADE" },
+          type: { type: "STRING" },
           title: { type: "STRING" },
           description: { type: "STRING" }
         },
         required: ["id", "type", "title", "description"]
       }
     },
-    image_prompt: { type: "STRING", description: "Detailed portrait prompt, digital art style" }
+    image_prompt: { type: "STRING" }
   },
   required: ["gender_age", "profession", "health", "phobia", "baggage", "hobby", "traits", "special_cards", "image_prompt"]
 };
@@ -114,7 +117,7 @@ const eventSchema = {
   type: "OBJECT",
   properties: {
     situation: { type: "STRING" },
-    image_prompt: { type: "STRING", description: "Visual description of the threat/situation" },
+    image_prompt: { type: "STRING" },
     analysis: { type: "STRING" },
     outcome: { type: "STRING" },
     narration: { type: "STRING" },
@@ -134,23 +137,33 @@ const eventSchema = {
 const SYSTEM = `Ты — Game Master «Бункера». Реализм, атмосфера выживания. Русский язык.`;
 
 export async function callGM(action: string, payload: any = {}) {
-  const nsfw = payload?.nsfw ? "ВКЛЮЧИ ТЕМЫ 18+: черный юмор, жестокий реализм, взрослые конфликты, провокации. Сделай персонажей и события более жесткими." : "Темы 18+ выключены. Соблюдай баланс.";
+  const nsfw = payload?.nsfw ? "ВКЛЮЧИ ТЕМЫ 18+: черный юмор, жестокий реализм, сексуальные отношения, интимные секреты, взрослые провокации, насилие и похоть. Сделай персонажей и события максимально откровенными и жесткими." : "Темы 18+ выключены.";
   
   if (action === "scenario") {
-    return callAI(SYSTEM, `Катастрофа и бункер для ${payload.players} чел. ${nsfw}. Дай 4-5 интерактивных объекта в бункер.`, catastropheSchema);
+    return callAI(SYSTEM, `Создай катастрофу и бункер. ${nsfw}. Дай 6-8 интерактивных объекта. Срок пребывания в годах.`, catastropheSchema);
   }
   
   if (action === "character") {
-    const cardsCount = payload.difficulty === "easy" ? 3 : payload.difficulty === "hard" ? 1 : 2;
-    return callAI(SYSTEM, `Персонаж для игры. ${nsfw}. Сгенерируй ${cardsCount} спец-карты (SPY - подсмотреть чужую черту, MUTATION - рискнуть и изменить свою фобию/здоровье, DOUBLE_VOTE - х2 голос, STEAL - забрать чужой багаж, UPGRADE - починить/улучшить объект бункера). Промпт для фото сделай максимально простым и понятным (English).`, characterSchema);
+    const diff = payload.difficulty || "normal";
+    // Легче сложность -> больше карт
+    const cardsCount = diff === "easy" ? 4 : diff === "hard" ? 1 : 2;
+    return callAI(SYSTEM, `Персонаж для игры. ${nsfw}. Сгенерируй ${cardsCount} спец-карты. Промпт для фото: Simple English, person, face, portrait, cinematic light.`, characterSchema);
+  }
+
+  if (action === "event_situation") {
+    return callAI(SYSTEM, `Сгенерируй ТОЛЬКО завязку события (JSON: { "situation": "...", "image_prompt": "..." }). ${nsfw}.`, {
+        type: "OBJECT",
+        properties: { situation: { type: "STRING" }, image_prompt: { type: "STRING" } },
+        required: ["situation", "image_prompt"]
+    });
   }
   
   if (action === "event") {
-    return callAI(SYSTEM, `Сгенерируй событие и его исход. Ситуация: "${payload.situation}". Игрок: ${payload.player.nickname}. ${nsfw}.`, eventSchema);
+    return callAI(SYSTEM, `Разреши исход события. Ситуация: "${payload.situation}". Игрок: ${payload.player.nickname}. ${nsfw}.`, eventSchema);
   }
   
   if (action === "epilogue") {
-    return callAI(SYSTEM, `Финал истории. Выжившие: ${JSON.stringify(payload.survivors)}. ${nsfw}.`, {
+    return callAI(SYSTEM, `Финал. Выжившие: ${JSON.stringify(payload.survivors)}. ${nsfw}.`, {
       type: "OBJECT",
       properties: { verdict: { type: "STRING" }, epilogue: { type: "STRING" } },
       required: ["verdict", "epilogue"]
