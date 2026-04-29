@@ -138,7 +138,7 @@ export default function Room() {
         await supabase.from("players").update({ character }).eq("id", p.id);
         i++;
         // Небольшая задержка для стабильности
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
 
       await supabase.from("messages").insert({ room_id: room.id, kind: "system", content: "Игра началась! Изучите свои карточки." });

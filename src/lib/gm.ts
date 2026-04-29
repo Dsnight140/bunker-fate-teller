@@ -32,6 +32,7 @@ export async function callGM(action: string, payload: any = {}, retries = 3) {
 
   const finalPrompt = `Ты — Game Master игры «Бункер». Твоя задача: ${task}.
   
+  ВАЖНО: ПИШИ ТОЛЬКО НА РУССКОМ ЯЗЫКЕ.
   ОТВЕТЬ СТРОГО В ФОРМАТЕ JSON ПО ЭТОМУ ШАБЛОНУ (НИКАКИХ ПРЕАМБУЛ):
   ${schema}`;
 
@@ -41,11 +42,11 @@ export async function callGM(action: string, payload: any = {}, retries = 3) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         messages: [{ role: "user", content: finalPrompt }],
-        model: "openai", // OpenAI на Pollinations обычно лучше всех справляется с JSON
+        model: "mistral", // Mistral обычно быстрее и лучше следует языку
         json: true,
         seed: Math.floor(Math.random() * 1000000)
       }),
-      signal: AbortSignal.timeout(30000) // 30 секунд таймаут
+      signal: AbortSignal.timeout(30000)
     });
 
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -59,9 +60,9 @@ export async function callGM(action: string, payload: any = {}, retries = 3) {
   } catch (e) {
     console.error(`AI Attempt failed (left: ${retries}):`, e);
     if (retries > 0) {
-      await new Promise(res => setTimeout(res, 3000));
+      await new Promise(res => setTimeout(res, 2000));
       return callGM(action, payload, retries - 1);
     }
-    throw new Error("ИИ временно перегружен. Пожалуйста, подождите 10 секунд и попробуйте снова.");
+    throw new Error("ИИ временно перегружен. Попробуйте еще раз.");
   }
 }
