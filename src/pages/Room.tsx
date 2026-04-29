@@ -112,9 +112,10 @@ export default function Room() {
     }
     setBusy(true);
     try {
-      toast.info("GM генерирует катастрофу...");
+      toast.info("Генерация мира и катастрофы...");
       const scenario = await callGM("scenario", { players: players.length, difficulty: gameDifficulty, nsfw });
-      if (!scenario?.catastrophe) throw new Error("Сбой генерации сценария. Попробуйте еще раз.");
+      if (!scenario?.catastrophe) throw new Error("Сбой при создании мира. Попробуйте нажать Старт еще раз.");
+      toast.success("Мир создан!");
 
       await supabase.from("rooms").update({
           status: "playing",
@@ -124,8 +125,10 @@ export default function Room() {
           current_round: 1,
       }).eq("id", room.id);
 
-      toast.info("Раздача карточек...");
+      toast.info("Генерация персонажей...");
+      let i = 1;
       for (const p of players) {
+        toast.info(`Создание персонажа для ${p.nickname} (${i}/${players.length})...`);
         const character = await callGM("character", {
           catastrophe: scenario.catastrophe,
           nickname: p.nickname,
@@ -133,7 +136,9 @@ export default function Room() {
           nsfw
         });
         await supabase.from("players").update({ character }).eq("id", p.id);
-        await new Promise((resolve) => setTimeout(resolve, 4000));
+        i++;
+        // Небольшая задержка для стабильности
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
       await supabase.from("messages").insert({ room_id: room.id, kind: "system", content: "Игра началась! Изучите свои карточки." });
