@@ -1,27 +1,29 @@
-// GM implementation - single batch call to minimize quota usage
-const GOOGLE_API_KEY = () => (typeof window !== "undefined"
-  ? (window as any).__env?.VITE_GOOGLE_API_KEY || import.meta.env.VITE_GOOGLE_API_KEY
-  : import.meta.env.VITE_GOOGLE_API_KEY);
+// GM implementation using Groq API (FREE, fast, generous limits)
+// Sign up at console.groq.com to get a free API key
+const GROQ_MODEL = "llama-3.1-8b-instant"; // Fast and smart
 
-const MODEL = "gemini-2.0-flash-lite";
-
-async function callAI(prompt: string, schema: any, retries = 3): Promise<any> {
-  const apiKey = GOOGLE_API_KEY();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`;
+async function callAI(systemPrompt: string, userPrompt: string, retries = 3): Promise<any> {
+  const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+  if (!apiKey) throw new Error("Groq API ключ не найден. Добавьте VITE_GROQ_API_KEY в .env");
 
   try {
-    const res = await fetch(url, {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: schema,
-          temperature: 0.9,
-        },
+        model: GROQ_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.9,
+        response_format: { type: "json_object" },
+        max_tokens: 4096,
       }),
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(30000),
     });
 
     if (!res.ok) {
@@ -29,20 +31,24 @@ async function callAI(prompt: string, schema: any, retries = 3): Promise<any> {
       throw new Error(JSON.stringify(err));
     }
     const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error("Empty response from AI");
-    return JSON.parse(text);
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) throw new Error("Пустой ответ от AI");
+
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start === -1 || end === -1) throw new Error("JSON not found in response");
+    return JSON.parse(text.substring(start, end + 1));
   } catch (e) {
+    console.error(`AI failed (retries left: ${retries}):`, e);
     if (retries > 0) {
-      await new Promise((r) => setTimeout(r, 3000));
-      return callAI(prompt, schema, retries - 1);
+      await new Promise((r) => setTimeout(r, 2000));
+      return callAI(systemPrompt, userPrompt, retries - 1);
     }
     throw e;
   }
 }
 
 // ─── BATCH START GAME ────────────────────────────────────────────────────────
-// Generates scenario + ALL characters in ONE single API call
 export async function callGM_StartGame(payload: {
   players: { id: string; nickname: string }[];
   difficulty: string;
@@ -56,84 +62,40 @@ export async function callGM_StartGame(payload: {
 
   const playerNames = players.map((p) => p.nickname).join(", ");
 
-  const prompt = `Ты — Game Master выживательной игры «Бункер». ${nsfwLine}
-  
-Создай сценарий и персонажей для игроков: ${playerNames}. Сложность: ${difficulty}.
-Все тексты ТОЛЬКО НА РУССКОМ ЯЗЫКЕ.
-Каждому игроку дай ${cardsCount} уникальных спец-карт.`;
+  const system = `Ты — Game Master выживательной игры «Бункер». Все тексты ТОЛЬКО НА РУССКОМ ЯЗЫКЕ. Отвечай ТОЛЬКО в формате JSON.`;
 
-  const playerCharSchema = {
-    type: "OBJECT",
-    properties: {
-      gender_age: { type: "STRING" },
-      profession: { type: "STRING" },
-      health: { type: "STRING" },
-      phobia: { type: "STRING" },
-      baggage: { type: "STRING" },
-      hobby: { type: "STRING" },
-      traits: { type: "ARRAY", items: { type: "STRING" } },
-      special_cards: {
-        type: "ARRAY",
-        items: {
-          type: "OBJECT",
-          properties: {
-            id: { type: "STRING" },
-            type: { type: "STRING", enum: ["SPY", "MUTATION", "DOUBLE_VOTE", "STEAL", "UPGRADE"] },
-            title: { type: "STRING" },
-            description: { type: "STRING" },
-          },
-          required: ["id", "type", "title", "description"],
-        },
-      },
-    },
-    required: ["gender_age", "profession", "health", "phobia", "baggage", "hobby", "traits", "special_cards"],
-  };
+  const user = `${nsfwLine}
+Создай катастрофу, бункер и персонажей для игроков: ${playerNames}. Сложность: ${difficulty}.
+Каждому игроку дай ровно ${cardsCount} уникальных спец-карты.
 
-  const schema = {
-    type: "OBJECT",
-    properties: {
-      catastrophe: {
-        type: "OBJECT",
-        properties: {
-          name: { type: "STRING" },
-          description: { type: "STRING" },
-        },
-        required: ["name", "description"],
-      },
-      bunker: {
-        type: "OBJECT",
-        properties: {
-          capacity: { type: "INTEGER" },
-          food_months: { type: "INTEGER" },
-          stay_years: { type: "INTEGER" },
-          description: { type: "STRING" },
-          objects: {
-            type: "ARRAY",
-            items: {
-              type: "OBJECT",
-              properties: {
-                name: { type: "STRING" },
-                description: { type: "STRING" },
-                status: { type: "STRING" },
-                action: { type: "STRING" },
-              },
-              required: ["name", "description", "status", "action"],
-            },
-          },
-        },
-        required: ["capacity", "food_months", "stay_years", "description", "objects"],
-      },
-      characters: {
-        type: "OBJECT",
-        properties: Object.fromEntries(players.map((p) => [p.nickname, playerCharSchema])),
-      },
-    },
-    required: ["catastrophe", "bunker", "characters"],
-  };
+ОТВЕТЬ В ТОЧНОСТИ В ЭТОМ ФОРМАТЕ JSON:
+{
+  "catastrophe": { "name": "Название катастрофы", "description": "Описание катастрофы" },
+  "bunker": {
+    "capacity": 4,
+    "food_months": 24,
+    "stay_years": 2,
+    "description": "Описание бункера",
+    "objects": [
+      { "name": "Название", "description": "Описание", "status": "Исправен", "action": "Действие" }
+    ]
+  },
+  "characters": {
+    ${players.map(p => `"${p.nickname}": {
+      "gender_age": "...",
+      "profession": "...",
+      "health": "...",
+      "phobia": "...",
+      "baggage": "...",
+      "hobby": "...",
+      "traits": ["..."],
+      "special_cards": [{ "id": "card_1", "type": "SPY", "title": "...", "description": "..." }]
+    }`).join(",\n    ")}
+  }
+}`;
 
-  const result = await callAI(prompt, schema);
+  const result = await callAI(system, user);
 
-  // Map characters by player id
   const charactersByPlayerId: Record<string, any> = {};
   for (const player of players) {
     charactersByPlayerId[player.id] = result.characters?.[player.nickname] || null;
@@ -142,59 +104,37 @@ export async function callGM_StartGame(payload: {
   return { scenario: { catastrophe: result.catastrophe, bunker: result.bunker }, characters: charactersByPlayerId };
 }
 
-// ─── EVENTS ──────────────────────────────────────────────────────────────────
+// ─── EVENTS & EPILOGUE ───────────────────────────────────────────────────────
 export async function callGM(action: string, payload: any = {}): Promise<any> {
   const nsfw = payload?.nsfw;
   const nsfwLine = nsfw
     ? "Включи темы 18+: черный юмор, сексуальные отношения, жесткий реализм."
     : "Контент обычный, без 18+.";
+  const system = `Ты — Game Master игры «Бункер». Все тексты ТОЛЬКО НА РУССКОМ ЯЗЫКЕ. Отвечай ТОЛЬКО в формате JSON.`;
 
   if (action === "event_situation") {
     return callAI(
-      `Game Master «Бункер». ${nsfwLine} Создай завязку чрезвычайного события на русском.`,
-      {
-        type: "OBJECT",
-        properties: { situation: { type: "STRING" } },
-        required: ["situation"],
-      }
+      system,
+      `${nsfwLine} Создай завязку чрезвычайной ситуации в бункере.
+JSON: { "situation": "Описание ситуации" }`
     );
   }
 
   if (action === "event") {
     return callAI(
-      `Game Master «Бункер». ${nsfwLine} Разреши событие на русском.
-Ситуация: "${payload.situation}". Жертва: ${payload.player?.nickname}.`,
-      {
-        type: "OBJECT",
-        properties: {
-          narration: { type: "STRING" },
-          effect: {
-            type: "OBJECT",
-            properties: {
-              food_delta: { type: "INTEGER" },
-              player_dies: { type: "BOOLEAN" },
-              bunker_change: { type: "STRING" },
-            },
-            required: ["food_delta", "player_dies", "bunker_change"],
-          },
-        },
-        required: ["narration", "effect"],
-      }
+      system,
+      `${nsfwLine} Разреши событие.
+Ситуация: "${payload.situation}". Жертва: ${payload.player?.nickname}.
+JSON: { "narration": "Описание итога", "effect": { "food_delta": 0, "player_dies": false, "bunker_change": "..." } }`
     );
   }
 
   if (action === "epilogue") {
     return callAI(
-      `Game Master «Бункер». ${nsfwLine} Напиши финальный эпилог на русском.
-Выжившие: ${JSON.stringify(payload.survivors?.map((p: any) => p.nickname))}.`,
-      {
-        type: "OBJECT",
-        properties: {
-          verdict: { type: "STRING", enum: ["survived", "died"] },
-          epilogue: { type: "STRING" },
-        },
-        required: ["verdict", "epilogue"],
-      }
+      system,
+      `${nsfwLine} Финальный эпилог.
+Выжившие: ${JSON.stringify(payload.survivors?.map((p: any) => p.nickname))}.
+JSON: { "verdict": "survived", "epilogue": "Текст эпилога" }`
     );
   }
 
