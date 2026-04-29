@@ -54,6 +54,7 @@ export default function Room() {
   const [eventPlayer, setEventPlayer] = useState("");
   const [gameDifficulty, setGameDifficulty] = useState("normal");
   const [turnLimit, setTurnLimit] = useState(5);
+  const [nsfw, setNsfw] = useState(false);
 
   useEffect(() => {
     if (!identity || identity.roomCode !== code) {
@@ -148,14 +149,14 @@ export default function Room() {
     setBusy(true);
     try {
       toast.info("GM генерирует катастрофу...");
-      const scenario = await callGM("scenario", { players: players.length, difficulty: gameDifficulty });
+      const scenario = await callGM("scenario", { players: players.length, difficulty: gameDifficulty, nsfw });
 
       await supabase
         .from("rooms")
         .update({
           status: "playing",
           catastrophe: scenario.catastrophe,
-          bunker: { ...scenario.bunker, gameDifficulty, turnLimit },
+          bunker: { ...scenario.bunker, gameDifficulty, turnLimit, nsfw },
           capacity: scenario.bunker.capacity,
           current_round: 1,
         })
@@ -173,6 +174,7 @@ export default function Room() {
           catastrophe: scenario.catastrophe,
           nickname: p.nickname,
           difficulty: gameDifficulty,
+          nsfw
         });
         await supabase.from("players").update({ character }).eq("id", p.id);
         // Добавлена пауза 4 секунды, чтобы не упираться в лимиты бесплатного API Gemini (15 RPM)
@@ -420,10 +422,24 @@ export default function Room() {
 
         {/* Catastrophe banner */}
         {playing && room.catastrophe && (
-          <div className="bunker-panel p-4 border-l-4 border-destructive animate-fade-in">
-            <div className="stencil text-xs text-destructive mb-1">⚠ КАТАСТРОФА</div>
-            <div className="font-stencil text-xl mb-1">{room.catastrophe.name}</div>
-            <div className="text-sm text-muted-foreground">{room.catastrophe.description}</div>
+          <div className="bunker-panel p-0 overflow-hidden border-l-4 border-destructive animate-fade-in">
+            {room.catastrophe.image_prompt && (
+              <div className="w-full h-48 relative overflow-hidden">
+                <img 
+                  src={`https://image.pollinations.ai/prompt/${encodeURIComponent(room.catastrophe.image_prompt)}?width=1200&height=400&nologo=true&seed=${room.id}`} 
+                  alt="Catastrophe"
+                  className="w-full h-full object-cover grayscale-[40%] contrast-125 opacity-50"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-background to-transparent" />
+              </div>
+            )}
+            <div className="p-4 relative">
+              <div className="stencil text-xs text-destructive mb-1 flex items-center gap-2">
+                <Radiation className="w-4 h-4 animate-spin-slow" /> КАТАСТРОФА
+              </div>
+              <div className="font-stencil text-2xl mb-2 glow-text uppercase tracking-widest">{room.catastrophe.name}</div>
+              <div className="text-sm text-foreground/80 leading-relaxed max-w-3xl">{room.catastrophe.description}</div>
+            </div>
           </div>
         )}
 
@@ -493,11 +509,22 @@ export default function Room() {
                       <Select value={gameDifficulty} onValueChange={setGameDifficulty}>
                         <SelectTrigger className="bg-input"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="easy">Лёгкая (1-2 плохих свойства, низкая смертность)</SelectItem>
-                          <SelectItem value="normal">Нормальная (баланс)</SelectItem>
-                          <SelectItem value="hard">Сложная (3-4 плохих свойства, хуже условия)</SelectItem>
+                          <SelectItem value="easy">Лёгкая (3 карты, низкая смертность)</SelectItem>
+                          <SelectItem value="normal">Нормальная (2 карты, баланс)</SelectItem>
+                          <SelectItem value="hard">Сложная (1 карта, жесть)</SelectItem>
                         </SelectContent>
                       </Select>
+                    </div>
+                    <div className="flex items-center justify-between mb-4 bg-destructive/10 p-2 border border-destructive/20">
+                       <div className="stencil text-[10px] text-destructive">РЕЖИМ 18+ (NSFW)</div>
+                       <Button 
+                         variant={nsfw ? "destructive" : "outline"}
+                         size="sm"
+                         onClick={() => setNsfw(!nsfw)}
+                         className="h-7 text-[9px] stencil"
+                       >
+                         {nsfw ? "ВКЛЮЧЕН" : "ВЫКЛЮЧЕН"}
+                       </Button>
                     </div>
                     <div className="space-y-2 mb-4">
                       <div className="stencil text-[10px] text-muted-foreground">АВТО-СОБЫТИЯ (РАУНДЫ)</div>
@@ -581,13 +608,34 @@ export default function Room() {
             )}
 
             {playing && room.bunker?.objects && (
-              <div className="bunker-panel p-4 space-y-2">
-                <div className="stencil text-xs text-muted-foreground flex items-center gap-2">
-                  <Package className="w-3 h-3" /> ОБЪЕКТЫ БУНКЕРА
+              <div className="bunker-panel p-4 space-y-3">
+                <div className="stencil text-xs text-primary flex items-center gap-2">
+                  <Package className="w-3 h-3" /> СИСТЕМЫ И ОБЪЕКТЫ БУНКЕРА
                 </div>
-                {room.bunker.objects.map((o: string, i: number) => (
-                  <div key={i} className="text-xs border-l-2 border-accent pl-2 py-1">{o}</div>
-                ))}
+                <div className="grid grid-cols-1 gap-2">
+                  {room.bunker.objects.map((o: any, i: number) => (
+                    <div key={i} className="text-xs bg-black/40 border border-border p-2 flex items-center justify-between group">
+                      <div>
+                        <div className="font-bold text-foreground/90 uppercase tracking-tighter">{o.name}</div>
+                        <div className="text-[10px] text-muted-foreground italic">{o.description}</div>
+                        <div className="text-[9px] mt-1">
+                          Статус: <span className={o.status.includes("Исправен") ? "text-success" : "text-destructive"}>{o.status}</span>
+                        </div>
+                      </div>
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        className="h-7 text-[9px] stencil opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => {
+                          toast.info(`Вы пытаетесь: ${o.action}`);
+                          // Here could be logic to call AI to resolve object interaction
+                        }}
+                      >
+                        Взаимодействовать
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </aside>
@@ -652,6 +700,7 @@ export default function Room() {
                   disabled={finished || me?.status === "dead"}
                   hasCharacter={!!me?.character}
                   allPlayers={players}
+                  room={room}
                 />
               </div>
             </div>
