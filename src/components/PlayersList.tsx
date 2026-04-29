@@ -1,5 +1,4 @@
-import { Skull, User, Crown, LogOut } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Skull, User, Crown } from "lucide-react";
 
 const LABELS: Record<string, string> = {
   gender_age: "Пол/возраст",
@@ -12,19 +11,7 @@ const LABELS: Record<string, string> = {
   ability: "Способность",
 };
 
-export function PlayersList({ 
-  players, 
-  currentId, 
-  isHost, 
-  onKick, 
-  onStartKickVote 
-}: { 
-  players: any[]; 
-  currentId: string;
-  isHost?: boolean;
-  onKick?: (id: string) => void;
-  onStartKickVote?: (id: string) => void;
-}) {
+export function PlayersList({ players, currentId }: { players: any[]; currentId: string }) {
   return (
     <div className="space-y-2">
       {players.map((p) => {
@@ -49,15 +36,7 @@ export function PlayersList({
                 {p.nickname}
               </span>
               {p.is_host && <Crown className="w-3 h-3 text-warning ml-auto" />}
-              
-              {!dead && !me && (
-                <div className="flex gap-1 ml-auto">
-                   <Button variant="ghost" size="icon" className="h-6 w-6 text-warning" onClick={() => onStartKickVote?.(p.id)} title="Голосовать за кик"><Skull className="w-3 h-3" /></Button>
-                   {isHost && <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => onKick?.(p.id)} title="Кикнуть"><LogOut className="w-3 h-3" /></Button>}
-                </div>
-              )}
-              
-              {me && !p.is_host && <span className="text-[9px] stencil text-primary ml-auto">[вы]</span>}
+              {me && <span className="text-[9px] stencil text-primary">[вы]</span>}
             </div>
             {revealedKeys.length === 0 ? (
               <div className="text-[10px] stencil text-muted-foreground">ничего не раскрыто</div>

@@ -14,7 +14,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -56,8 +55,6 @@ export default function Room() {
   const [turnLimit, setTurnLimit] = useState(5);
   const [nsfw, setNsfw] = useState(false);
   const [showBunkerModal, setShowBunkerModal] = useState(false);
-  const [showJournalModal, setShowJournalModal] = useState(false);
-  const [messages, setMessages] = useState<any[]>([]);
 
   useEffect(() => {
     if (!identity || identity.roomCode !== code) {
@@ -80,9 +77,6 @@ export default function Room() {
       setPlayers(ps || []);
       setLoading(false);
 
-      const { data: msgs } = await supabase.from("messages").select("*").eq("room_id", r.id).order("created_at", { ascending: false });
-      setMessages(msgs || []);
-
       const ch = supabase.channel(`room:${r.id}`)
         .on("postgres_changes", { event: "*", schema: "public", table: "rooms", filter: `id=eq.${r.id}` }, (p) => setRoom(p.new))
         .on("postgres_changes", { event: "*", schema: "public", table: "players", filter: `room_id=eq.${r.id}` }, async () => {
@@ -91,7 +85,6 @@ export default function Room() {
         })
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `room_id=eq.${r.id}` }, (p) => {
             const msg = p.new;
-            setMessages(prev => [msg, ...prev]);
             if (msg.kind === "reveal") toast.info(msg.content, { duration: 5000, icon: <Eye className="w-4 h-4" /> });
             else if (msg.kind === "system") toast(msg.content, { duration: 5000, icon: <Info className="w-4 h-4" /> });
             else if (msg.kind === "gm") toast.warning(msg.content, { duration: 7000, icon: <Zap className="w-4 h-4" /> });
@@ -185,13 +178,7 @@ export default function Room() {
     try {
       const votes = room.bunker.voting.votes || {};
       const tallies: Record<string, number> = {};
-      
-      Object.entries(votes).forEach(([voterId, targetId]: [string, any]) => {
-        const voter = players.find(p => p.id === voterId);
-        const weight = voter?.character?._double_vote ? 2 : 1;
-        tallies[targetId] = (tallies[targetId] || 0) + weight;
-      });
-
+      Object.values(votes).forEach((targetId: any) => { tallies[targetId] = (tallies[targetId] || 0) + 1; });
       let maxVotes = -1;
       let targetIds: string[] = [];
       Object.entries(tallies).forEach(([tid, count]) => {
@@ -202,17 +189,15 @@ export default function Room() {
       const target = players.find((p) => p.id === finalTargetId);
       if (!target) throw new Error("Цель не найдена");
 
-      const ev = room.bunker.voting.type === "kick" 
-        ? { narration: `По результатам голосования, большинством голосов было решено изгнать ${target.nickname} из бункера.`, effect: { food_delta: 0, player_dies: true } }
-        : await callGM("event", {
-            situation: room.bunker.voting.situation,
-            player: { nickname: target.nickname, character: target.character },
-            bunker: room.bunker,
-            nsfw: room.bunker.nsfw
-          });
+      const ev = await callGM("event", {
+        situation: room.bunker.voting.situation,
+        player: { nickname: target.nickname, character: target.character },
+        bunker: room.bunker,
+        nsfw: room.bunker.nsfw
+      });
 
       let extraText = "";
-      if (ev.effect.player_dies || room.bunker?.voting?.type === "kick") {
+      if (ev.effect.player_dies) {
         await supabase.from("players").update({ status: "dead" }).eq("id", target.id);
         extraText = ` ☠️ ${target.nickname} погибает.`;
       }
@@ -220,16 +205,6 @@ export default function Room() {
       let bunker = { ...room.bunker };
       bunker.voting = { active: false, votes: {} };
       bunker.food_months = Math.max(0, (bunker.food_months || 0) + ev.effect.food_delta);
-      
-      // Clear double votes for those who used them
-      for (const p of players) {
-        if (p.character?._double_vote) {
-          const newChar = { ...p.character };
-          delete newChar._double_vote;
-          await supabase.from("players").update({ character: newChar }).eq("id", p.id);
-        }
-      }
-
       await supabase.from("rooms").update({ bunker }).eq("id", room.id);
       await supabase.from("messages").insert({ room_id: room.id, kind: "event", content: `ИТОГ: ${ev.narration}${extraText}` });
       await supabase.from("rooms").update({ current_round: (room.current_round || 1) + 1 }).eq("id", room.id);
@@ -246,41 +221,6 @@ export default function Room() {
     bunker.voting.votes = { ...(bunker.voting.votes || {}), [me.id]: targetId };
     await supabase.from("rooms").update({ bunker }).eq("id", room.id);
     toast.success("Голос принят");
-  };
-
-  const kickPlayer = async (playerId: string) => {
-    if (!isHost) return;
-    const p = players.find(id => id.id === playerId);
-    if (!p) return;
-    try {
-      await supabase.from("players").update({ status: "dead" }).eq("id", playerId);
-      await supabase.from("messages").insert({ room_id: room.id, kind: "system", content: `Хост исключил игрока ${p.nickname} из бункера.` });
-      toast.success(`${p.nickname} исключен`);
-    } catch (e: any) { toast.error(e.message); }
-  };
-
-  const startKickVote = async (playerId: string) => {
-    if (room.bunker?.voting?.active) {
-      toast.error("Голосование уже идет");
-      return;
-    }
-    const target = players.find(p => p.id === playerId);
-    if (!target) return;
-
-    setBusy(true);
-    try {
-      let bunker = { ...room.bunker };
-      bunker.voting = { 
-        active: true, 
-        type: "kick",
-        targetId: playerId,
-        votes: {}, 
-        situation: `Голосование за исключение игрока: ${target.nickname}` 
-      };
-      await supabase.from("rooms").update({ bunker }).eq("id", room.id);
-      await supabase.from("messages").insert({ room_id: room.id, kind: "gm", content: `Инициировано голосование за изгнание игрока ${target.nickname}!` });
-    } catch (e: any) { toast.error(e.message); }
-    finally { setBusy(false); }
   };
 
   const finish = async () => {
@@ -313,7 +253,7 @@ export default function Room() {
                 <div className="stencil text-[10px] text-muted-foreground">КОД ЛОББИ</div>
                 <div className="font-stencil text-2xl tracking-widest text-primary glow-text cursor-pointer" onClick={() => { navigator.clipboard.writeText(code || ""); toast.success("Копировано"); }}>{code}</div>
              </div>
-             <PlayersList players={players} currentId={identity.playerId} isHost={isHost} onKick={kickPlayer} onStartKickVote={startKickVote} />
+             <PlayersList players={players} currentId={identity.playerId} />
           </div>
 
           {isHost && (
@@ -382,22 +322,11 @@ export default function Room() {
                   </div>
                 )}
                 <p className="text-sm text-gray-300 leading-relaxed mb-6">{room.catastrophe.description}</p>
-                <div className="pt-4 flex flex-wrap gap-4 border-t border-white/10 items-center">
+                <div className="pt-4 grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-white/10">
                   <Stat icon={<Clock className="w-4 h-4" />} label="СРОК" val={`${room.bunker.stay_years} ЛЕТ`} />
                   <Stat icon={<Shield className="w-4 h-4" />} label="ЗАЩИТА" val={`${room.capacity} МЕСТ`} />
                   <Stat icon={<Utensils className="w-4 h-4" />} label="РЕСУРСЫ" val={`${room.bunker.food_months} МЕС.`} />
-                  <div className="flex-1" />
-                  <div className="flex gap-2">
-                    <Button variant="outline" className="border-primary/40 h-10 stencil text-[9px]" onClick={() => setShowBunkerModal(true)}>
-                      <Shield className="w-4 h-4 mr-2" /> БУНКЕР
-                    </Button>
-                    <Button variant="outline" className="border-warning/40 h-10 stencil text-[9px]" onClick={() => setShowJournalModal(true)}>
-                      <Clock className="w-4 h-4 mr-2" /> ЖУРНАЛ
-                    </Button>
-                    <Button variant="destructive" className="h-10 stencil text-[9px]" onClick={leaveRoom}>
-                      <LogOut className="w-4 h-4 mr-2" /> ВЫХОД
-                    </Button>
-                  </div>
+                  <Button variant="ghost" size="sm" className="stencil text-[10px]" onClick={() => setShowBunkerModal(true)}><Info className="w-3 h-3 mr-1" /> О БУНКЕРЕ</Button>
                 </div>
               </div>
             </div>
@@ -413,7 +342,6 @@ export default function Room() {
                     <TableRow className="border-white/10 hover:bg-transparent">
                       <TableHead className="stencil w-[150px]">ИГРОК</TableHead>
                       {FIELDS.map(f => <TableHead key={f.key} className="stencil">{f.label}</TableHead>)}
-                      <TableHead className="stencil text-right">ДЕЙСТВИЯ</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -423,19 +351,11 @@ export default function Room() {
                        return (
                          <TableRow key={p.id} className="border-white/5 hover:bg-white/5 transition-colors">
                            <TableCell className="font-bold text-primary">{p.nickname} {p.status === "dead" && "☠️"}</TableCell>
-                            {FIELDS.map(f => (
-                              <TableCell key={f.key} className="text-[11px]">
-                                {rev[f.key] ? <span className="text-gray-200">{Array.isArray(char[f.key]) ? char[f.key].join(" • ") : char[f.key]}</span> : <span className="text-white/10 italic">СКРЫТО</span>}
-                              </TableCell>
-                            ))}
-                            <TableCell className="text-right space-x-2">
-                               {p.id !== identity.playerId && p.status === "alive" && (
-                                 <div className="flex justify-end gap-1">
-                                   <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-warning" title="Голосовать за кик" onClick={() => startKickVote(p.id)}><Skull className="w-3.5 h-3.5" /></Button>
-                                   {isHost && <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" title="Кикнуть (Хост)" onClick={() => kickPlayer(p.id)}><LogOut className="w-3.5 h-3.5" /></Button>}
-                                 </div>
-                               )}
-                            </TableCell>
+                           {FIELDS.map(f => (
+                             <TableCell key={f.key} className="text-[11px]">
+                               {rev[f.key] ? <span className="text-gray-200">{Array.isArray(char[f.key]) ? char[f.key].join(" • ") : char[f.key]}</span> : <span className="text-white/10 italic">СКРЫТО</span>}
+                             </TableCell>
+                           ))}
                          </TableRow>
                        );
                     })}
@@ -483,40 +403,6 @@ export default function Room() {
               </div>
            </DialogContent>
         </Dialog>
-
-         <Dialog open={showJournalModal} onOpenChange={setShowJournalModal}>
-            <DialogContent className="bunker-panel bg-background border-warning/40 text-foreground max-w-2xl">
-               <DialogHeader>
-                  <DialogTitle className="stencil text-warning flex items-center gap-2">
-                    <Clock className="w-5 h-5" /> ХРОНИКА ВЫЖИВАНИЯ
-                  </DialogTitle>
-                  <DialogDescription className="text-gray-400">История всех действий, происшествий и раскрытий в этом бункере.</DialogDescription>
-               </DialogHeader>
-               <div className="mt-4 max-h-[500px] overflow-y-auto custom-scrollbar space-y-3 p-2">
-                  {messages.length === 0 && <div className="text-center py-10 text-white/20 stencil text-xs italic">История пуста...</div>}
-                  {messages.map((m) => (
-                    <div key={m.id} className={`p-3 border-l-4 rounded-r bg-white/5 ${
-                      m.kind === "event" ? "border-destructive/60 bg-destructive/5" : 
-                      m.kind === "gm" ? "border-warning/60 bg-warning/5" :
-                      m.kind === "reveal" ? "border-primary/60 bg-primary/5" : 
-                      "border-white/10"
-                    }`}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[9px] stencil opacity-50">
-                          {new Date(m.created_at).toLocaleTimeString()}
-                        </span>
-                        <Badge variant="outline" className="text-[8px] h-4 px-1 opacity-50 stencil uppercase">
-                          {m.kind}
-                        </Badge>
-                      </div>
-                      <div className="text-xs leading-relaxed text-gray-200">
-                        {m.content}
-                      </div>
-                    </div>
-                  ))}
-               </div>
-            </DialogContent>
-         </Dialog>
 
         <Dialog open={playing && !!room.bunker?.voting?.active} onOpenChange={() => {}}>
            <DialogContent className="bunker-panel bg-background border-warning max-w-2xl p-0 overflow-hidden">
