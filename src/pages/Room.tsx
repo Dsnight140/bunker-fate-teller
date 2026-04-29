@@ -6,6 +6,7 @@ import { clearIdentity, loadIdentity } from "@/lib/identity";
 import { callGM, callGM_StartGame } from "@/lib/gm";
 import { CharacterCard } from "@/components/CharacterCard";
 import { PlayersList } from "@/components/PlayersList";
+import { GameHistory } from "@/components/GameHistory";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -30,7 +31,8 @@ import {
   Clock,
   Shield,
   Eye,
-  Info
+  Info,
+  History
 } from "lucide-react";
 
 const FIELDS = [
@@ -55,6 +57,8 @@ export default function Room() {
   const [turnLimit, setTurnLimit] = useState(5);
   const [nsfw, setNsfw] = useState(false);
   const [showBunkerModal, setShowBunkerModal] = useState(false);
+  const [showGameHistory, setShowGameHistory] = useState(false);
+  const [gameEvents, setGameEvents] = useState<any[]>([]);
 
   useEffect(() => {
     if (!identity || identity.roomCode !== code) {
@@ -247,7 +251,12 @@ export default function Room() {
           <div className="bunker-panel p-4 flex flex-col gap-4">
              <div className="flex items-center justify-between">
                 <Radiation className="w-6 h-6 text-primary flicker" />
-                <Button variant="ghost" size="icon" onClick={() => nav("/")}><LogOut className="w-4 h-4" /></Button>
+                <div className="flex gap-2">
+                   <Button variant="ghost" size="icon" onClick={() => setShowGameHistory(true)} title="История игры">
+                     <History className="w-4 h-4" />
+                   </Button>
+                   <Button variant="ghost" size="icon" onClick={() => nav("/")}><LogOut className="w-4 h-4" /></Button>
+                </div>
              </div>
              <div className="text-center">
                 <div className="stencil text-[10px] text-muted-foreground">КОД ЛОББИ</div>
@@ -442,6 +451,13 @@ export default function Room() {
            </DialogContent>
         </Dialog>
 
+        <GameHistory 
+          gameId={room?.id || "unknown"} 
+          players={players} 
+          events={gameEvents}
+          isOpen={showGameHistory} 
+          onClose={() => setShowGameHistory(false)} 
+        />
       </div>
     </main>
   );
