@@ -127,8 +127,8 @@ export default function Room() {
   const isHost = identity?.isHost;
 
   const startGame = async () => {
-    if (!room || players.length < 2) {
-      toast.error("Нужно минимум 2 игрока");
+    if (!room || players.length < 1) {
+      toast.error("Нужен хотя бы 1 игрок");
       return;
     }
     setBusy(true);
@@ -342,7 +342,7 @@ export default function Room() {
                 {!playing && !finished && (
                   <Button
                     onClick={startGame}
-                    disabled={busy || players.length < 2}
+                    disabled={busy || players.length < 1}
                     className="w-full bg-primary text-primary-foreground hover:bg-primary-glow stencil"
                   >
                     <Play className="w-4 h-4 mr-2" />
