@@ -55,6 +55,8 @@ export default function Room() {
   const [turnLimit, setTurnLimit] = useState(5);
   const [nsfw, setNsfw] = useState(false);
   const [showBunkerModal, setShowBunkerModal] = useState(false);
+  const [showJournalModal, setShowJournalModal] = useState(false);
+  const [messages, setMessages] = useState<any[]>([]);
 
   useEffect(() => {
     if (!identity || identity.roomCode !== code) {
@@ -77,6 +79,9 @@ export default function Room() {
       setPlayers(ps || []);
       setLoading(false);
 
+      const { data: msgs } = await supabase.from("messages").select("*").eq("room_id", r.id).order("created_at", { ascending: false });
+      setMessages(msgs || []);
+
       const ch = supabase.channel(`room:${r.id}`)
         .on("postgres_changes", { event: "*", schema: "public", table: "rooms", filter: `id=eq.${r.id}` }, (p) => setRoom(p.new))
         .on("postgres_changes", { event: "*", schema: "public", table: "players", filter: `room_id=eq.${r.id}` }, async () => {
@@ -85,6 +90,7 @@ export default function Room() {
         })
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `room_id=eq.${r.id}` }, (p) => {
             const msg = p.new;
+            setMessages(prev => [msg, ...prev]);
             if (msg.kind === "reveal") toast.info(msg.content, { duration: 5000, icon: <Eye className="w-4 h-4" /> });
             else if (msg.kind === "system") toast(msg.content, { duration: 5000, icon: <Info className="w-4 h-4" /> });
             else if (msg.kind === "gm") toast.warning(msg.content, { duration: 7000, icon: <Zap className="w-4 h-4" /> });
@@ -178,7 +184,13 @@ export default function Room() {
     try {
       const votes = room.bunker.voting.votes || {};
       const tallies: Record<string, number> = {};
-      Object.values(votes).forEach((targetId: any) => { tallies[targetId] = (tallies[targetId] || 0) + 1; });
+      
+      Object.entries(votes).forEach(([voterId, targetId]: [string, any]) => {
+        const voter = players.find(p => p.id === voterId);
+        const weight = voter?.character?._double_vote ? 2 : 1;
+        tallies[targetId] = (tallies[targetId] || 0) + weight;
+      });
+
       let maxVotes = -1;
       let targetIds: string[] = [];
       Object.entries(tallies).forEach(([tid, count]) => {
@@ -205,6 +217,16 @@ export default function Room() {
       let bunker = { ...room.bunker };
       bunker.voting = { active: false, votes: {} };
       bunker.food_months = Math.max(0, (bunker.food_months || 0) + ev.effect.food_delta);
+      
+      // Clear double votes for those who used them
+      for (const p of players) {
+        if (p.character?._double_vote) {
+          const newChar = { ...p.character };
+          delete newChar._double_vote;
+          await supabase.from("players").update({ character: newChar }).eq("id", p.id);
+        }
+      }
+
       await supabase.from("rooms").update({ bunker }).eq("id", room.id);
       await supabase.from("messages").insert({ room_id: room.id, kind: "event", content: `ИТОГ: ${ev.narration}${extraText}` });
       await supabase.from("rooms").update({ current_round: (room.current_round || 1) + 1 }).eq("id", room.id);
@@ -322,11 +344,22 @@ export default function Room() {
                   </div>
                 )}
                 <p className="text-sm text-gray-300 leading-relaxed mb-6">{room.catastrophe.description}</p>
-                <div className="pt-4 grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-white/10">
+                <div className="pt-4 flex flex-wrap gap-4 border-t border-white/10 items-center">
                   <Stat icon={<Clock className="w-4 h-4" />} label="СРОК" val={`${room.bunker.stay_years} ЛЕТ`} />
                   <Stat icon={<Shield className="w-4 h-4" />} label="ЗАЩИТА" val={`${room.capacity} МЕСТ`} />
                   <Stat icon={<Utensils className="w-4 h-4" />} label="РЕСУРСЫ" val={`${room.bunker.food_months} МЕС.`} />
-                  <Button variant="ghost" size="sm" className="stencil text-[10px]" onClick={() => setShowBunkerModal(true)}><Info className="w-3 h-3 mr-1" /> О БУНКЕРЕ</Button>
+                  <div className="flex-1" />
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="border-primary/40 h-10 stencil text-[9px]" onClick={() => setShowBunkerModal(true)}>
+                      <Shield className="w-4 h-4 mr-2" /> БУНКЕР
+                    </Button>
+                    <Button variant="outline" className="border-warning/40 h-10 stencil text-[9px]" onClick={() => setShowJournalModal(true)}>
+                      <Clock className="w-4 h-4 mr-2" /> ЖУРНАЛ
+                    </Button>
+                    <Button variant="destructive" className="h-10 stencil text-[9px]" onClick={leaveRoom}>
+                      <LogOut className="w-4 h-4 mr-2" /> ВЫХОД
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -403,6 +436,40 @@ export default function Room() {
               </div>
            </DialogContent>
         </Dialog>
+
+         <Dialog open={showJournalModal} onOpenChange={setShowJournalModal}>
+            <DialogContent className="bunker-panel bg-background border-warning/40 text-foreground max-w-2xl">
+               <DialogHeader>
+                  <DialogTitle className="stencil text-warning flex items-center gap-2">
+                    <Clock className="w-5 h-5" /> ХРОНИКА ВЫЖИВАНИЯ
+                  </DialogTitle>
+                  <DialogDescription className="text-gray-400">История всех действий, происшествий и раскрытий в этом бункере.</DialogDescription>
+               </DialogHeader>
+               <div className="mt-4 max-h-[500px] overflow-y-auto custom-scrollbar space-y-3 p-2">
+                  {messages.length === 0 && <div className="text-center py-10 text-white/20 stencil text-xs italic">История пуста...</div>}
+                  {messages.map((m) => (
+                    <div key={m.id} className={`p-3 border-l-4 rounded-r bg-white/5 ${
+                      m.kind === "event" ? "border-destructive/60 bg-destructive/5" : 
+                      m.kind === "gm" ? "border-warning/60 bg-warning/5" :
+                      m.kind === "reveal" ? "border-primary/60 bg-primary/5" : 
+                      "border-white/10"
+                    }`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[9px] stencil opacity-50">
+                          {new Date(m.created_at).toLocaleTimeString()}
+                        </span>
+                        <Badge variant="outline" className="text-[8px] h-4 px-1 opacity-50 stencil uppercase">
+                          {m.kind}
+                        </Badge>
+                      </div>
+                      <div className="text-xs leading-relaxed text-gray-200">
+                        {m.content}
+                      </div>
+                    </div>
+                  ))}
+               </div>
+            </DialogContent>
+         </Dialog>
 
         <Dialog open={playing && !!room.bunker?.voting?.active} onOpenChange={() => {}}>
            <DialogContent className="bunker-panel bg-background border-warning max-w-2xl p-0 overflow-hidden">
