@@ -651,6 +651,7 @@ export default function Room() {
                   revealed={(me?.revealed as any) || {}}
                   disabled={finished || me?.status === "dead"}
                   hasCharacter={!!me?.character}
+                  allPlayers={players}
                 />
               </div>
             </div>

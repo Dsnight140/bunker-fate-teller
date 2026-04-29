@@ -95,10 +95,23 @@ const characterSchema = {
     baggage: { type: "STRING", description: "Один предмет багажа" },
     hobby: { type: "STRING", description: "Хобби" },
     traits: { type: "ARRAY", items: { type: "STRING" }, description: "Особенности характера" },
-    abilities: { type: "ARRAY", items: { type: "STRING" }, description: "Две спец-способности" },
+    special_cards: { 
+      type: "ARRAY", 
+      items: { 
+        type: "OBJECT",
+        properties: {
+          id: { type: "STRING" },
+          type: { type: "STRING", description: "Тип: HEAL, SWAP_HEALTH, REVEAL, STEAL_ITEM, REBOOT (перегенерировать черту)" },
+          title: { type: "STRING", description: "Атмосферное название карты" },
+          description: { type: "STRING", description: "Понятное описание действия" }
+        },
+        required: ["id", "type", "title", "description"]
+      },
+      description: "Список игровых карт способностей" 
+    },
     image_prompt: { type: "STRING", description: "Детальный промпт на английском для генерации портрета. Опиши внешность, возраст, пол, одежду." },
   },
-  required: ["gender_age", "profession", "health", "phobia", "baggage", "hobby", "traits", "abilities", "image_prompt"],
+  required: ["gender_age", "profession", "health", "phobia", "baggage", "hobby", "traits", "special_cards", "image_prompt"],
 };
 
 const eventSituationSchema = {
@@ -140,7 +153,7 @@ const epilogueSchema = {
 };
 
 const SYSTEM = `Ты — Game Master игры «Бункер». Атмосферный, реалистичный, лаконичный стиль. Только русский язык. Не принимай решения за игроков — только обрабатывай механику и описывай мир. 
-Создавай разнообразных, но реалистичных персонажей (избегай совсем нелепых абсурдных сочетаний, старайся соблюдать жизненную логику). Профессии, хобби, фобии и способности должны быть креативными и провокационными для дебатов, но возможными в реальном мире.`;
+Создавай разнообразных, но реалистичных персонажей. Профессии, хобби, фобии должны быть креативными и провокационными для дебатов.`;
 
 export async function callGM(action: string, payload: any = {}) {
   let result: any;
@@ -153,12 +166,16 @@ export async function callGM(action: string, payload: any = {}) {
       catastropheSchema
     );
   } else if (action === "character") {
-    const diffInfo = payload?.difficulty === "hard" ? "Дай персонажу 3-4 плохие характеристики (здоровье, фобии, черты)." : payload?.difficulty === "easy" ? "Дай персонажу 1-2 плохие характеристики. Сделай карточку менее смертельной." : "Дай персонажу 2-3 плохие характеристики.";
+    const diff = payload?.difficulty ?? "normal";
+    const cardsCount = diff === "easy" ? 3 : diff === "hard" ? 1 : 2;
+    const diffInfo = diff === "hard" ? "Дай персонажу 3-4 плохие характеристики (здоровье, фобии, черты)." : diff === "easy" ? "Дай персонажу 1-2 плохие характеристики. Сделай карточку менее смертельной." : "Дай персонажу 2-3 плохие характеристики.";
+    
     result = await callAI(
       SYSTEM,
-      `Сгенерируй уникального персонажа. ${diffInfo} Пол и ориентация: преимущественно бисексуалы с небольшими отклонениями. 
-      ВНИМАНИЕ НА ЛОГИКУ: возраст, профессия и здоровье должны быть связаны. Если персонаж старше 50 лет, он НЕ МОЖЕТ быть полностью здоровым (обязательно добавь возрастные заболевания, хронические болезни или проблемы с суставами/сердцем). Молодые могут иметь случайные травмы или болезни. 
-      Выдай ровно ДВЕ спец-способности из этого списка 5 способностей: 1. Обмен любой своей характеристики с другим игроком. 2. Любовная связь (если один изгнан/убит, второй уходит за ним). 3. Узнать одну скрытую характеристику любого игрока. 4. Иммунитет к одному событию/катастрофе. 5. Украсть предмет из бункера. Ник игрока: ${payload?.nickname ?? "Игрок"}.`,
+      `Сгенерируй уникального персонажа. ${diffInfo} Пол и ориентация: преимущественно бисексуалы. 
+      ВНИМАНИЕ НА ЛОГИКУ: возраст, профессия и здоровье должны быть связаны. Если персонаж старше 50 лет, он НЕ МОЖЕТ быть полностью здоровым. 
+      Сгенерируй ровно ${cardsCount} карты способностей из типов: HEAL, SWAP_HEALTH, REVEAL, STEAL_ITEM, REBOOT. 
+      Ник игрока: ${payload?.nickname ?? "Игрок"}.`,
       characterSchema
     );
   } else if (action === "event_situation") {
