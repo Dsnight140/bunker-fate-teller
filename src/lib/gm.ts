@@ -4,14 +4,14 @@ export async function callGM(action: string, payload: any = {}) {
     ? "ВКЛЮЧИ ТЕМЫ 18+: черный юмор, сексуальные отношения, интимные секреты, взрослые провокации, насилие и похоть. Сделай персонажей и события максимально откровенными." 
     : "Темы 18+ выключены.";
 
-  const system = `Ты — Game Master «Бункера». Реализм, атмосфера выживания. Русский язык. Всегда отвечай ТОЛЬКО чистым JSON без пояснений.`;
+  const system = `Ты — Game Master «Бункера». Реализм, атмосфера выживания. Русский язык. Всегда отвечай ТОЛЬКО в формате JSON. Не пиши ничего, кроме JSON.`;
   
   let prompt = "";
   let schema = "";
 
   if (action === "scenario") {
     prompt = `Создай катастрофу и бункер для ${payload.players} чел. ${nsfw}. Дай 6 интерактивных объектов.`;
-    schema = `{ "catastrophe": { "name": "Название", "description": "Описание", "image_prompt": "Промпт для фото" }, "bunker": { "capacity": 0, "food_months": 0, "stay_years": 0, "objects": [{ "name": "...", "description": "...", "status": "...", "action": "..." }], "description": "..." } }`;
+    schema = `{ "catastrophe": { "name": "...", "description": "...", "image_prompt": "..." }, "bunker": { "capacity": 0, "food_months": 0, "stay_years": 0, "objects": [{ "name": "...", "description": "...", "status": "...", "action": "..." }], "description": "..." } }`;
   }
   else if (action === "character") {
     const diff = payload.difficulty || "normal";
@@ -32,24 +32,40 @@ export async function callGM(action: string, payload: any = {}) {
     schema = `{ "verdict": "survived|died", "epilogue": "..." }`;
   }
 
-  const finalPrompt = `${system}\n\nЗАДАНИЕ: ${prompt}\n\nОТВЕТЬ СТРОГО В ЭТОМ ФОРМАТЕ JSON:\n${schema}`;
+  const finalPrompt = `ЗАДАНИЕ: ${prompt}\n\nОТВЕТЬ СТРОГО В ЭТОМ ФОРМАТЕ JSON:\n${schema}`;
 
   try {
-    // Используем простой GET запрос к Pollinations, это самый надежный способ
-    const url = `https://text.pollinations.ai/${encodeURIComponent(finalPrompt)}?model=openai&json=true&seed=${Math.floor(Math.random() * 1000000)}`;
-    const response = await fetch(url);
+    const response = await fetch("https://text.pollinations.ai/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: finalPrompt }
+        ],
+        model: "openai",
+        json: true,
+        seed: Math.floor(Math.random() * 1000000)
+      })
+    });
 
     if (!response.ok) throw new Error(`AI error: ${response.status}`);
     const text = await response.text();
     
-    // Пытаемся найти JSON в ответе
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("AI не вернул JSON");
-    
-    return JSON.parse(jsonMatch[0]);
+    // Продвинутая очистка JSON
+    let cleaned = text.trim();
+    // Убираем маркдаун если есть
+    cleaned = cleaned.replace(/^```json\s*/i, "").replace(/\s*```$/i, "");
+    // Находим первый { и последний }
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start === -1 || end === -1) throw new Error("AI не вернул валидный JSON объект");
+    cleaned = cleaned.substring(start, end + 1);
+
+    return JSON.parse(cleaned);
   } catch (e) {
     console.error("Pollinations Error:", e);
-    // Фолбек на случай ошибки - пробуем еще раз с другим сидом
-    throw new Error("Ошибка связи с ИИ. Пожалуйста, попробуйте еще раз через секунду.");
+    // Пробуем еще раз через секунду (рекурсия с ограничением была бы лучше, но пока так)
+    throw new Error("Сбой генерации. Пожалуйста, нажмите кнопку еще раз.");
   }
 }
