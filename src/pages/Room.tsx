@@ -296,17 +296,38 @@ export default function Room() {
           
           {/* Disaster Banner */}
           {playing && room.catastrophe && (
-            <div className="bunker-panel p-6 overflow-hidden border-b-2 border-destructive animate-fade-in shadow-2xl bg-black/60">
-              <div className="mb-6">
-                 <div className="stencil text-xs text-destructive mb-2 flex items-center gap-2"><Radiation className="w-4 h-4" /> ОБЪЕКТ: ЗЕМЛЯ — КАТАСТРОФА ПРЯМО СЕЙЧАС</div>
-                 <h1 className="text-4xl md:text-5xl font-stencil uppercase text-white glow-text mb-4 tracking-tighter leading-none">{room.catastrophe.name}</h1>
-                 <p className="text-sm md:text-base text-gray-300 max-w-4xl leading-relaxed">{room.catastrophe.description}</p>
-              </div>
-              <div className="pt-4 grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-white/10">
-                 <Stat icon={<Clock className="w-4 h-4" />} label="СРОК" val={`${room.bunker.stay_years} ЛЕТ`} />
-                 <Stat icon={<Shield className="w-4 h-4" />} label="ЗАЩИТА" val={`${room.capacity} МЕСТ`} />
-                 <Stat icon={<Utensils className="w-4 h-4" />} label="РЕСУРСЫ" val={`${room.bunker.food_months} МЕС.`} />
-                 <Button variant="ghost" size="sm" className="stencil text-[10px]" onClick={() => setShowBunkerModal(true)}><Info className="w-3 h-3 mr-1" /> О БУНКЕРЕ</Button>
+            <div className="bunker-panel overflow-hidden border-b-2 border-destructive animate-fade-in shadow-2xl">
+              {/* Image banner - loads lazily, doesn't block game */}
+              {room.catastrophe.image_prompt && (
+                <div className="relative h-56 md:h-72 w-full overflow-hidden">
+                  <img
+                    src={`https://image.pollinations.ai/prompt/${encodeURIComponent(room.catastrophe.image_prompt + ", post-apocalyptic, dark, cinematic, 4k")}?width=1400&height=500&nologo=true&seed=${room.id}`}
+                    className="w-full h-full object-cover grayscale-[20%] contrast-110"
+                    loading="lazy"
+                    alt=""
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
+                  <div className="absolute bottom-4 left-6 right-6">
+                    <div className="stencil text-xs text-destructive mb-1 flex items-center gap-2"><Radiation className="w-4 h-4" /> ОБЪЕКТ: ЗЕМЛЯ — КАТАСТРОФА ПРЯМО СЕЙЧАС</div>
+                    <h1 className="text-4xl md:text-5xl font-stencil uppercase text-white glow-text tracking-tighter leading-none">{room.catastrophe.name}</h1>
+                  </div>
+                </div>
+              )}
+              <div className="p-6">
+                {!room.catastrophe.image_prompt && (
+                  <div>
+                    <div className="stencil text-xs text-destructive mb-2 flex items-center gap-2"><Radiation className="w-4 h-4" /> ОБЪЕКТ: ЗЕМЛЯ — КАТАСТРОФА ПРЯМО СЕЙЧАС</div>
+                    <h1 className="text-4xl md:text-5xl font-stencil uppercase text-white glow-text mb-4 tracking-tighter leading-none">{room.catastrophe.name}</h1>
+                  </div>
+                )}
+                <p className="text-sm text-gray-300 leading-relaxed mb-6">{room.catastrophe.description}</p>
+                <div className="pt-4 grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-white/10">
+                  <Stat icon={<Clock className="w-4 h-4" />} label="СРОК" val={`${room.bunker.stay_years} ЛЕТ`} />
+                  <Stat icon={<Shield className="w-4 h-4" />} label="ЗАЩИТА" val={`${room.capacity} МЕСТ`} />
+                  <Stat icon={<Utensils className="w-4 h-4" />} label="РЕСУРСЫ" val={`${room.bunker.food_months} МЕС.`} />
+                  <Button variant="ghost" size="sm" className="stencil text-[10px]" onClick={() => setShowBunkerModal(true)}><Info className="w-3 h-3 mr-1" /> О БУНКЕРЕ</Button>
+                </div>
               </div>
             </div>
           )}
@@ -384,24 +405,39 @@ export default function Room() {
         </Dialog>
 
         <Dialog open={playing && !!room.bunker?.voting?.active} onOpenChange={() => {}}>
-           <DialogContent className="bunker-panel bg-background border-warning max-w-2xl p-6">
-              <DialogHeader>
-                 <DialogTitle className="stencil text-warning flicker text-2xl text-center uppercase">ЧРЕЗВЫЧАЙНАЯ СИТУАЦИЯ</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-6 mt-4">
-                 <div className="text-center max-w-2xl mx-auto italic text-gray-200 text-lg">« {room?.bunker?.voting?.situation} »</div>
-                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                    {alivePlayers.map(p => {
-                       const votesCount = Object.values(room.bunker?.voting?.votes || {}).filter(id => id === p.id).length;
-                       const myVote = room.bunker?.voting?.votes?.[me?.id || ""] === p.id;
-                       return (
-                         <Button key={p.id} variant={myVote ? "default" : "outline"} className={`h-12 stencil text-[10px] ${myVote ? "bg-warning text-black" : "border-warning/40"}`} onClick={() => castVote(p.id)} disabled={me?.status === "dead"}>
-                            {p.nickname} ({votesCount})
-                         </Button>
-                       );
-                    })}
-                 </div>
-                 {isHost && <Button className="w-full bg-warning text-black stencil" onClick={resolveVoting} disabled={busy}>ПРИНЯТЬ РЕШЕНИЕ (GM)</Button>}
+           <DialogContent className="bunker-panel bg-background border-warning max-w-2xl p-0 overflow-hidden">
+              {room?.bunker?.voting?.image_prompt && (
+                <div className="relative h-44 w-full overflow-hidden">
+                  <img
+                    src={`https://image.pollinations.ai/prompt/${encodeURIComponent(room.bunker.voting.image_prompt)}?width=900&height=350&nologo=true`}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                    alt=""
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                  <div className="absolute inset-0 bg-black/60" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <h2 className="text-3xl font-stencil text-warning glow-text uppercase flicker">ЧРЕЗВЫЧАЙНАЯ СИТУАЦИЯ</h2>
+                  </div>
+                </div>
+              )}
+              <div className="p-6 space-y-4">
+                {!room?.bunker?.voting?.image_prompt && (
+                  <h2 className="text-2xl font-stencil text-warning text-center uppercase flicker">ЧРЕЗВЫЧАЙНАЯ СИТУАЦИЯ</h2>
+                )}
+                <div className="text-center italic text-gray-200 text-base">« {room?.bunker?.voting?.situation} »</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                   {alivePlayers.map(p => {
+                      const votesCount = Object.values(room.bunker?.voting?.votes || {}).filter(id => id === p.id).length;
+                      const myVote = room.bunker?.voting?.votes?.[me?.id || ""] === p.id;
+                      return (
+                        <Button key={p.id} variant={myVote ? "default" : "outline"} className={`h-12 stencil text-[10px] ${myVote ? "bg-warning text-black" : "border-warning/40"}`} onClick={() => castVote(p.id)} disabled={me?.status === "dead"}>
+                           {p.nickname} ({votesCount})
+                        </Button>
+                      );
+                   })}
+                </div>
+                {isHost && <Button className="w-full bg-warning text-black stencil" onClick={resolveVoting} disabled={busy}>ПРИНЯТЬ РЕШЕНИЕ (GM)</Button>}
               </div>
            </DialogContent>
         </Dialog>

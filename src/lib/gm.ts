@@ -70,7 +70,7 @@ export async function callGM_StartGame(payload: {
 
 ОТВЕТЬ В ТОЧНОСТИ В ЭТОМ ФОРМАТЕ JSON:
 {
-  "catastrophe": { "name": "Название катастрофы", "description": "Описание катастрофы" },
+  "catastrophe": { "name": "Название катастрофы", "description": "Описание катастрофы", "image_prompt": "dramatic apocalyptic scene, cinematic, dark" },
   "bunker": {
     "capacity": 4,
     "food_months": 24,
@@ -116,7 +116,7 @@ export async function callGM(action: string, payload: any = {}): Promise<any> {
     return callAI(
       system,
       `${nsfwLine} Создай завязку чрезвычайной ситуации в бункере.
-JSON: { "situation": "Описание ситуации" }`
+JSON: { "situation": "Описание ситуации", "image_prompt": "dramatic underground bunker emergency scene, cinematic" }`
     );
   }
 
