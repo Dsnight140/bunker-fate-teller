@@ -21,11 +21,13 @@ export function CharacterCard({
   roomId,
   revealed,
   disabled,
+  hasCharacter,
 }: {
   identity: Identity;
   roomId: string;
   revealed: Record<string, boolean>;
   disabled?: boolean;
+  hasCharacter?: boolean;
 }) {
   const [character, setCharacter] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -33,6 +35,7 @@ export function CharacterCard({
 
   useEffect(() => {
     const load = async () => {
+      setLoading(true);
       const { data, error } = await supabase.rpc("get_my_character", {
         p_player_id: identity.playerId,
         p_token: identity.token,
@@ -42,7 +45,7 @@ export function CharacterCard({
       setLoading(false);
     };
     load();
-  }, [identity.playerId]);
+  }, [identity.playerId, identity.token, hasCharacter]);
 
   const renderValue = (key: string, val: any) => {
     if (Array.isArray(val)) return val.join(" • ");
