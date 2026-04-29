@@ -1,5 +1,5 @@
 // Client-side GM implementation with NSFW support and enhanced visuals
-const MODEL = "gemini-2.0-flash-exp";
+const MODEL = "gemini-1.5-flash";
 
 async function callAI(systemPrompt: string, userPrompt: string, schema?: any, retries = 3): Promise<any> {
   const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
