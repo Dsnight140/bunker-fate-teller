@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
@@ -201,15 +202,17 @@ export default function Room() {
       const target = players.find((p) => p.id === finalTargetId);
       if (!target) throw new Error("Цель не найдена");
 
-      const ev = await callGM("event", {
-        situation: room.bunker.voting.situation,
-        player: { nickname: target.nickname, character: target.character },
-        bunker: room.bunker,
-        nsfw: room.bunker.nsfw
-      });
+      const ev = room.bunker.voting.type === "kick" 
+        ? { narration: `По результатам голосования, большинством голосов было решено изгнать ${target.nickname} из бункера.`, effect: { food_delta: 0, player_dies: true } }
+        : await callGM("event", {
+            situation: room.bunker.voting.situation,
+            player: { nickname: target.nickname, character: target.character },
+            bunker: room.bunker,
+            nsfw: room.bunker.nsfw
+          });
 
       let extraText = "";
-      if (ev.effect.player_dies) {
+      if (ev.effect.player_dies || room.bunker?.voting?.type === "kick") {
         await supabase.from("players").update({ status: "dead" }).eq("id", target.id);
         extraText = ` ☠️ ${target.nickname} погибает.`;
       }
@@ -245,6 +248,41 @@ export default function Room() {
     toast.success("Голос принят");
   };
 
+  const kickPlayer = async (playerId: string) => {
+    if (!isHost) return;
+    const p = players.find(id => id.id === playerId);
+    if (!p) return;
+    try {
+      await supabase.from("players").update({ status: "dead" }).eq("id", playerId);
+      await supabase.from("messages").insert({ room_id: room.id, kind: "system", content: `Хост исключил игрока ${p.nickname} из бункера.` });
+      toast.success(`${p.nickname} исключен`);
+    } catch (e: any) { toast.error(e.message); }
+  };
+
+  const startKickVote = async (playerId: string) => {
+    if (room.bunker?.voting?.active) {
+      toast.error("Голосование уже идет");
+      return;
+    }
+    const target = players.find(p => p.id === playerId);
+    if (!target) return;
+
+    setBusy(true);
+    try {
+      let bunker = { ...room.bunker };
+      bunker.voting = { 
+        active: true, 
+        type: "kick",
+        targetId: playerId,
+        votes: {}, 
+        situation: `Голосование за исключение игрока: ${target.nickname}` 
+      };
+      await supabase.from("rooms").update({ bunker }).eq("id", room.id);
+      await supabase.from("messages").insert({ room_id: room.id, kind: "gm", content: `Инициировано голосование за изгнание игрока ${target.nickname}!` });
+    } catch (e: any) { toast.error(e.message); }
+    finally { setBusy(false); }
+  };
+
   const finish = async () => {
     setBusy(true);
     try {
@@ -275,7 +313,7 @@ export default function Room() {
                 <div className="stencil text-[10px] text-muted-foreground">КОД ЛОББИ</div>
                 <div className="font-stencil text-2xl tracking-widest text-primary glow-text cursor-pointer" onClick={() => { navigator.clipboard.writeText(code || ""); toast.success("Копировано"); }}>{code}</div>
              </div>
-             <PlayersList players={players} currentId={identity.playerId} />
+             <PlayersList players={players} currentId={identity.playerId} isHost={isHost} onKick={kickPlayer} onStartKickVote={startKickVote} />
           </div>
 
           {isHost && (
@@ -375,6 +413,7 @@ export default function Room() {
                     <TableRow className="border-white/10 hover:bg-transparent">
                       <TableHead className="stencil w-[150px]">ИГРОК</TableHead>
                       {FIELDS.map(f => <TableHead key={f.key} className="stencil">{f.label}</TableHead>)}
+                      <TableHead className="stencil text-right">ДЕЙСТВИЯ</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -384,11 +423,19 @@ export default function Room() {
                        return (
                          <TableRow key={p.id} className="border-white/5 hover:bg-white/5 transition-colors">
                            <TableCell className="font-bold text-primary">{p.nickname} {p.status === "dead" && "☠️"}</TableCell>
-                           {FIELDS.map(f => (
-                             <TableCell key={f.key} className="text-[11px]">
-                               {rev[f.key] ? <span className="text-gray-200">{Array.isArray(char[f.key]) ? char[f.key].join(" • ") : char[f.key]}</span> : <span className="text-white/10 italic">СКРЫТО</span>}
-                             </TableCell>
-                           ))}
+                            {FIELDS.map(f => (
+                              <TableCell key={f.key} className="text-[11px]">
+                                {rev[f.key] ? <span className="text-gray-200">{Array.isArray(char[f.key]) ? char[f.key].join(" • ") : char[f.key]}</span> : <span className="text-white/10 italic">СКРЫТО</span>}
+                              </TableCell>
+                            ))}
+                            <TableCell className="text-right space-x-2">
+                               {p.id !== identity.playerId && p.status === "alive" && (
+                                 <div className="flex justify-end gap-1">
+                                   <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-warning" title="Голосовать за кик" onClick={() => startKickVote(p.id)}><Skull className="w-3.5 h-3.5" /></Button>
+                                   {isHost && <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive" title="Кикнуть (Хост)" onClick={() => kickPlayer(p.id)}><LogOut className="w-3.5 h-3.5" /></Button>}
+                                 </div>
+                               )}
+                            </TableCell>
                          </TableRow>
                        );
                     })}
