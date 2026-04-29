@@ -14,13 +14,176 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      messages: {
+        Row: {
+          author: string | null
+          content: string
+          created_at: string
+          id: string
+          kind: string
+          metadata: Json | null
+          room_id: string
+        }
+        Insert: {
+          author?: string | null
+          content: string
+          created_at?: string
+          id?: string
+          kind: string
+          metadata?: Json | null
+          room_id: string
+        }
+        Update: {
+          author?: string | null
+          content?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          metadata?: Json | null
+          room_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      players: {
+        Row: {
+          character: Json | null
+          id: string
+          is_host: boolean
+          joined_at: string
+          nickname: string
+          revealed: Json
+          room_id: string
+          secret_token: string
+          status: string
+        }
+        Insert: {
+          character?: Json | null
+          id?: string
+          is_host?: boolean
+          joined_at?: string
+          nickname: string
+          revealed?: Json
+          room_id: string
+          secret_token: string
+          status?: string
+        }
+        Update: {
+          character?: Json | null
+          id?: string
+          is_host?: boolean
+          joined_at?: string
+          nickname?: string
+          revealed?: Json
+          room_id?: string
+          secret_token?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "players_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rooms: {
+        Row: {
+          bunker: Json | null
+          capacity: number | null
+          catastrophe: Json | null
+          code: string
+          created_at: string
+          current_round: number
+          epilogue: string | null
+          host_token: string
+          id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          bunker?: Json | null
+          capacity?: number | null
+          catastrophe?: Json | null
+          code: string
+          created_at?: string
+          current_round?: number
+          epilogue?: string | null
+          host_token: string
+          id?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          bunker?: Json | null
+          capacity?: number | null
+          catastrophe?: Json | null
+          code?: string
+          created_at?: string
+          current_round?: number
+          epilogue?: string | null
+          host_token?: string
+          id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
-      [_ in never]: never
+      players_public: {
+        Row: {
+          id: string | null
+          is_host: boolean | null
+          joined_at: string | null
+          nickname: string | null
+          revealed: Json | null
+          room_id: string | null
+          status: string | null
+        }
+        Insert: {
+          id?: string | null
+          is_host?: boolean | null
+          joined_at?: string | null
+          nickname?: string | null
+          revealed?: Json | null
+          room_id?: string | null
+          status?: string | null
+        }
+        Update: {
+          id?: string | null
+          is_host?: boolean | null
+          joined_at?: string | null
+          nickname?: string | null
+          revealed?: Json | null
+          room_id?: string | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "players_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
-      [_ in never]: never
+      get_my_character: {
+        Args: { p_player_id: string; p_token: string }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
