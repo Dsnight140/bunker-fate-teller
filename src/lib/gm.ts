@@ -9,21 +9,21 @@ export async function callGM(action: string, payload: any = {}, retries = 3) {
 
   if (action === "scenario") {
     task = `Создай катастрофу и бункер для ${payload.players} чел. ${nsfwPrompt}. Дай 6 интерактивных объектов.`;
-    schema = `{ "catastrophe": { "name": "Название", "description": "Описание", "image_prompt": "Промпт для фото" }, "bunker": { "capacity": 0, "food_months": 0, "stay_years": 0, "objects": [{ "name": "...", "description": "...", "status": "...", "action": "..." }], "description": "..." } }`;
+    schema = `{ "catastrophe": { "name": "Название", "description": "Описание" }, "bunker": { "capacity": 0, "food_months": 0, "stay_years": 0, "objects": [{ "name": "...", "description": "...", "status": "...", "action": "..." }], "description": "..." } }`;
   }
   else if (action === "character") {
     const diff = payload.difficulty || "normal";
     const cardsCount = diff === "easy" ? 4 : diff === "hard" ? 1 : 2;
-    task = `Персонаж для игры. ${nsfwPrompt}. Сгенерируй ${cardsCount} спец-карты. Промпт для фото: Simple English, person, face, portrait.`;
-    schema = `{ "gender_age": "...", "profession": "...", "health": "...", "phobia": "...", "baggage": "...", "hobby": "...", "traits": ["..."], "special_cards": [{ "id": "...", "type": "SPY|MUTATION|DOUBLE_VOTE|STEAL|UPGRADE", "title": "...", "description": "..." }], "image_prompt": "..." }`;
+    task = `Персонаж для игры. ${nsfwPrompt}. Сгенерируй ${cardsCount} спец-карты.`;
+    schema = `{ "gender_age": "...", "profession": "...", "health": "...", "phobia": "...", "baggage": "...", "hobby": "...", "traits": ["..."], "special_cards": [{ "id": "...", "type": "SPY|MUTATION|DOUBLE_VOTE|STEAL|UPGRADE", "title": "...", "description": "..." }] }`;
   }
   else if (action === "event_situation") {
     task = `Сгенерируй завязку события. ${nsfwPrompt}.`;
-    schema = `{ "situation": "...", "image_prompt": "..." }`;
+    schema = `{ "situation": "..." }`;
   }
   else if (action === "event") {
     task = `Разреши исход события. Ситуация: "${payload.situation}". Игрок: ${payload.player.nickname}. ${nsfwPrompt}.`;
-    schema = `{ "situation": "...", "image_prompt": "...", "analysis": "...", "outcome": "death|survival", "narration": "...", "effect": { "food_delta": 0, "player_dies": false, "bunker_change": "..." } }`;
+    schema = `{ "situation": "...", "analysis": "...", "outcome": "death|survival", "narration": "...", "effect": { "food_delta": 0, "player_dies": false, "bunker_change": "..." } }`;
   }
   else if (action === "epilogue") {
     task = `Финал. Выжившие: ${JSON.stringify(payload.survivors)}. ${nsfwPrompt}.`;

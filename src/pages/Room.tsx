@@ -163,7 +163,7 @@ export default function Room() {
         if (!sit?.situation) throw new Error("AI не смог сгенерировать событие. Пропускаем.");
 
         let bunker = { ...room.bunker };
-        bunker.voting = { active: true, votes: {}, situation: sit.situation, image_prompt: sit.image_prompt };
+        bunker.voting = { active: true, votes: {}, situation: sit.situation };
         await supabase.from("rooms").update({ current_round: nextRound, bunker }).eq("id", room.id);
       } else {
         await supabase.from("rooms").update({ current_round: nextRound }).eq("id", room.id);
@@ -299,21 +299,13 @@ export default function Room() {
           
           {/* Disaster Banner */}
           {playing && room.catastrophe && (
-            <div className="bunker-panel p-0 overflow-hidden border-b-2 border-destructive animate-fade-in shadow-2xl">
-              <div className="relative h-64 md:h-80 w-full">
-                <img 
-                  src={`https://image.pollinations.ai/prompt/${encodeURIComponent(room.catastrophe.image_prompt)}?width=1600&height=600&nologo=true&seed=${room.id}`} 
-                  className="w-full h-full object-cover grayscale-[30%] contrast-125"
-                  alt="Catastrophe"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
-                <div className="absolute bottom-6 left-6 right-6">
-                   <div className="stencil text-xs text-destructive mb-1 flex items-center gap-2"><Radiation className="w-4 h-4" /> ОБЪЕКТ: ЗЕМЛЯ — КАТАСТРОФА ПРЯМО СЕЙЧАС</div>
-                   <h1 className="text-4xl md:text-5xl font-stencil uppercase text-white glow-text mb-2 tracking-tighter leading-none">{room.catastrophe.name}</h1>
-                   <p className="text-sm md:text-base text-gray-300 max-w-4xl line-clamp-3 md:line-clamp-none">{room.catastrophe.description}</p>
-                </div>
+            <div className="bunker-panel p-6 overflow-hidden border-b-2 border-destructive animate-fade-in shadow-2xl bg-black/60">
+              <div className="mb-6">
+                 <div className="stencil text-xs text-destructive mb-2 flex items-center gap-2"><Radiation className="w-4 h-4" /> ОБЪЕКТ: ЗЕМЛЯ — КАТАСТРОФА ПРЯМО СЕЙЧАС</div>
+                 <h1 className="text-4xl md:text-5xl font-stencil uppercase text-white glow-text mb-4 tracking-tighter leading-none">{room.catastrophe.name}</h1>
+                 <p className="text-sm md:text-base text-gray-300 max-w-4xl leading-relaxed">{room.catastrophe.description}</p>
               </div>
-              <div className="bg-black/80 backdrop-blur p-4 grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-white/10">
+              <div className="pt-4 grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-white/10">
                  <Stat icon={<Clock className="w-4 h-4" />} label="СРОК" val={`${room.bunker.stay_years} ЛЕТ`} />
                  <Stat icon={<Shield className="w-4 h-4" />} label="ЗАЩИТА" val={`${room.capacity} МЕСТ`} />
                  <Stat icon={<Utensils className="w-4 h-4" />} label="РЕСУРСЫ" val={`${room.bunker.food_months} МЕС.`} />
@@ -330,7 +322,6 @@ export default function Room() {
                 <Table className="min-w-[1000px]">
                   <TableHeader>
                     <TableRow className="border-white/10 hover:bg-transparent">
-                      <TableHead className="stencil w-[60px]">ФОТО</TableHead>
                       <TableHead className="stencil w-[150px]">ИГРОК</TableHead>
                       {FIELDS.map(f => <TableHead key={f.key} className="stencil">{f.label}</TableHead>)}
                     </TableRow>
@@ -339,10 +330,8 @@ export default function Room() {
                     {players.map(p => {
                        const rev = p.revealed || {};
                        const char = p.character || {};
-                       const avatar = char.image_prompt ? `https://image.pollinations.ai/prompt/${encodeURIComponent(char.image_prompt)}?width=80&height=80&nologo=true&seed=${p.id}` : null;
                        return (
                          <TableRow key={p.id} className="border-white/5 hover:bg-white/5 transition-colors">
-                           <TableCell>{avatar ? <img src={avatar} className="w-8 h-8 rounded border border-white/10 grayscale" /> : <Users className="w-6 h-6 opacity-20" />}</TableCell>
                            <TableCell className="font-bold text-primary">{p.nickname} {p.status === "dead" && "☠️"}</TableCell>
                            {FIELDS.map(f => (
                              <TableCell key={f.key} className="text-[11px]">
@@ -398,16 +387,12 @@ export default function Room() {
         </Dialog>
 
         <Dialog open={playing && !!room.bunker?.voting?.active} onOpenChange={() => {}}>
-           <DialogContent className="bunker-panel bg-background border-warning max-w-4xl p-0 overflow-hidden">
-              <div className="relative h-48 w-full">
-                 <img src={`https://image.pollinations.ai/prompt/${encodeURIComponent(room?.bunker?.voting?.image_prompt || "threat") }?width=1000&height=400&nologo=true`} className="w-full h-full object-cover" />
-                 <div className="absolute inset-0 bg-black/60" />
-                 <div className="absolute inset-0 flex items-center justify-center">
-                    <h2 className="text-3xl font-stencil text-warning glow-text uppercase flicker">ЧРЕЗВЫЧАЙНАЯ СИТУАЦИЯ</h2>
-                 </div>
-              </div>
-              <div className="p-6 space-y-4">
-                 <div className="text-center max-w-2xl mx-auto italic text-gray-200">« {room?.bunker?.voting?.situation} »</div>
+           <DialogContent className="bunker-panel bg-background border-warning max-w-2xl p-6">
+              <DialogHeader>
+                 <DialogTitle className="stencil text-warning flicker text-2xl text-center uppercase">ЧРЕЗВЫЧАЙНАЯ СИТУАЦИЯ</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-6 mt-4">
+                 <div className="text-center max-w-2xl mx-auto italic text-gray-200 text-lg">« {room?.bunker?.voting?.situation} »</div>
                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                     {alivePlayers.map(p => {
                        const votesCount = Object.values(room.bunker?.voting?.votes || {}).filter(id => id === p.id).length;

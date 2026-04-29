@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Eye, EyeOff, Lock, Zap, Target, ImageOff } from "lucide-react";
+import { Eye, EyeOff, Lock, Zap, Target } from "lucide-react";
 import { Identity } from "@/lib/identity";
 import {
   Select,
@@ -45,7 +45,6 @@ export function CharacterCard({
   const [playingCardId, setPlayingCardId] = useState<string | null>(null);
   const [targetPlayerId, setTargetPlayerId] = useState<string>("");
   const [targetObjectId, setTargetObjectId] = useState<string>("");
-  const [imgError, setImgError] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -57,7 +56,6 @@ export function CharacterCard({
       if (error) console.error(error);
       setCharacter(data);
       setLoading(false);
-      setImgError(false);
     };
     load();
   }, [identity.playerId, identity.token, hasCharacter]);
@@ -148,30 +146,11 @@ export function CharacterCard({
   if (loading && !character) return <div className="bunker-panel p-6 stencil text-xs">Загрузка...</div>;
   if (!character) return <div className="bunker-panel p-6 text-center text-sm text-muted-foreground">Карточка не готова.</div>;
 
-  const avatarUrl = !imgError && character.image_prompt 
-    ? `https://image.pollinations.ai/prompt/${encodeURIComponent(character.image_prompt)}?width=512&height=512&nologo=true&seed=${identity.playerId}`
-    : null;
-
   return (
     <div className="space-y-4">
-      <div className="bunker-panel overflow-hidden border-2 border-primary/30 relative aspect-square">
-        {avatarUrl ? (
-          <img 
-            src={avatarUrl} 
-            alt="Portrait" 
-            className="w-full h-full object-cover grayscale-[20%] contrast-125"
-            onError={() => setImgError(true)}
-          />
-        ) : (
-          <div className="w-full h-full bg-input/40 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
-             <ImageOff className="w-12 h-12 mb-4 opacity-20" />
-             <div className="stencil text-[10px]">Система визуализации недоступна</div>
-          </div>
-        )}
-        <div className="absolute bottom-0 left-0 right-0 bg-black/80 backdrop-blur-md p-3 border-t border-primary/20">
-           <div className="stencil text-[10px] text-primary">ИДЕНТИФИКАЦИЯ</div>
-           <div className="text-xl font-stencil uppercase tracking-tighter leading-none mt-1">{identity.nickname}</div>
-        </div>
+      <div className="bunker-panel p-4 border-l-2 border-primary">
+         <div className="stencil text-[10px] text-primary">ИДЕНТИФИКАЦИЯ ОБЪЕКТА</div>
+         <div className="text-2xl font-stencil uppercase tracking-tighter glow-text mt-1">{identity.nickname}</div>
       </div>
 
       {character.special_cards?.length > 0 && (
