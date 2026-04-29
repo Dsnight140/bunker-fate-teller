@@ -331,6 +331,7 @@ export default function Room() {
               roomId={room.id}
               revealed={(me?.revealed as any) || {}}
               disabled={finished || me?.status === "dead"}
+              hasCharacter={!!me?.character}
             />
 
             {isHost && (
