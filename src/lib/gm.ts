@@ -1,17 +1,17 @@
 // GM implementation using Pollinations.ai (FREE, NO KEY, NO LIMITS)
-export async function callGM(action: string, payload: any = {}) {
+export async function callGM(action: string, payload: any = {}, retries = 3) {
   const nsfw = payload?.nsfw 
     ? "ВКЛЮЧИ ТЕМЫ 18+: черный юмор, сексуальные отношения, интимные секреты, взрослые провокации, насилие и похоть. Сделай персонажей и события максимально откровенными." 
     : "Темы 18+ выключены.";
 
-  const system = `Ты — Game Master «Бункера». Реализм, атмосфера выживания. Русский язык. Всегда отвечай ТОЛЬКО в формате JSON. Не пиши ничего, кроме JSON.`;
+  const system = `Ты — Game Master «Бункера». Реализм, атмосфера выживания. Русский язык. Всегда отвечай ТОЛЬКО чистым JSON без пояснений.`;
   
   let prompt = "";
   let schema = "";
 
   if (action === "scenario") {
     prompt = `Создай катастрофу и бункер для ${payload.players} чел. ${nsfw}. Дай 6 интерактивных объектов.`;
-    schema = `{ "catastrophe": { "name": "...", "description": "...", "image_prompt": "..." }, "bunker": { "capacity": 0, "food_months": 0, "stay_years": 0, "objects": [{ "name": "...", "description": "...", "status": "...", "action": "..." }], "description": "..." } }`;
+    schema = `{ "catastrophe": { "name": "Название", "description": "Описание", "image_prompt": "Промпт для фото" }, "bunker": { "capacity": 0, "food_months": 0, "stay_years": 0, "objects": [{ "name": "...", "description": "...", "status": "...", "action": "..." }], "description": "..." } }`;
   }
   else if (action === "character") {
     const diff = payload.difficulty || "normal";
@@ -32,7 +32,7 @@ export async function callGM(action: string, payload: any = {}) {
     schema = `{ "verdict": "survived|died", "epilogue": "..." }`;
   }
 
-  const finalPrompt = `ЗАДАНИЕ: ${prompt}\n\nОТВЕТЬ СТРОГО В ЭТОМ ФОРМАТЕ JSON:\n${schema}`;
+  const finalPrompt = `${prompt}\n\nОТВЕТЬ СТРОГО В ЭТОМ ФОРМАТЕ JSON:\n${schema}`;
 
   try {
     const response = await fetch("https://text.pollinations.ai/", {
@@ -43,29 +43,29 @@ export async function callGM(action: string, payload: any = {}) {
           { role: "system", content: system },
           { role: "user", content: finalPrompt }
         ],
-        model: "openai",
+        model: "mistral", // Mistral часто стабильнее в JSON чем другие бесплатные модели
         json: true,
         seed: Math.floor(Math.random() * 1000000)
       })
     });
 
-    if (!response.ok) throw new Error(`AI error: ${response.status}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const text = await response.text();
     
-    // Продвинутая очистка JSON
-    let cleaned = text.trim();
-    // Убираем маркдаун если есть
-    cleaned = cleaned.replace(/^```json\s*/i, "").replace(/\s*```$/i, "");
-    // Находим первый { и последний }
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start === -1 || end === -1) throw new Error("AI не вернул валидный JSON объект");
-    cleaned = cleaned.substring(start, end + 1);
+    // Пытаемся найти JSON в ответе
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start === -1 || end === -1) throw new Error("JSON not found");
+    const cleaned = text.substring(start, end + 1);
 
     return JSON.parse(cleaned);
   } catch (e) {
     console.error("Pollinations Error:", e);
-    // Пробуем еще раз через секунду (рекурсия с ограничением была бы лучше, но пока так)
-    throw new Error("Сбой генерации. Пожалуйста, нажмите кнопку еще раз.");
+    if (retries > 0) {
+      // Экспоненциальная задержка при повторе
+      await new Promise(res => setTimeout(res, 2000 * (4 - retries)));
+      return callGM(action, payload, retries - 1);
+    }
+    throw new Error("Сбой ИИ. Попробуйте нажать кнопку еще раз через пару секунд.");
   }
 }
