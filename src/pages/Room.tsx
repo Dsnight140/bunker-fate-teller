@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { clearIdentity, loadIdentity } from "@/lib/identity";
-import { callGM } from "@/lib/gm";
+import { callGM, callGM_StartGame } from "@/lib/gm";
 import { CharacterCard } from "@/components/CharacterCard";
 import { PlayersList } from "@/components/PlayersList";
 import { Button } from "@/components/ui/button";
@@ -112,37 +112,34 @@ export default function Room() {
     }
     setBusy(true);
     try {
-      toast.info("Генерация мира и катастрофы...");
-      const scenario = await callGM("scenario", { players: players.length, difficulty: gameDifficulty, nsfw });
-      if (!scenario?.catastrophe) throw new Error("Сбой при создании мира. Попробуйте нажать Старт еще раз.");
-      toast.success("Мир создан!");
+      toast.info("GM генерирует мир и всех персонажей... (может занять ~20 сек)");
+      
+      // SINGLE batched API call - generates scenario + ALL characters at once
+      const result = await callGM_StartGame({
+        players: players.map(p => ({ id: p.id, nickname: p.nickname })),
+        difficulty: gameDifficulty,
+        nsfw,
+      });
+
+      if (!result?.scenario?.catastrophe) throw new Error("Сбой генерации. Нажмите Старт ещё раз.");
 
       await supabase.from("rooms").update({
           status: "playing",
-          catastrophe: scenario.catastrophe,
-          bunker: { ...scenario.bunker, gameDifficulty, turnLimit, nsfw },
-          capacity: scenario.bunker.capacity,
+          catastrophe: result.scenario.catastrophe,
+          bunker: { ...result.scenario.bunker, gameDifficulty, turnLimit, nsfw },
+          capacity: result.scenario.bunker.capacity,
           current_round: 1,
       }).eq("id", room.id);
 
-      toast.info("Генерация персонажей...");
-      let i = 1;
-      for (const p of players) {
-        toast.info(`Создание персонажа для ${p.nickname} (${i}/${players.length})...`);
-        const character = await callGM("character", {
-          catastrophe: scenario.catastrophe,
-          nickname: p.nickname,
-          difficulty: gameDifficulty,
-          nsfw
-        });
-        await supabase.from("players").update({ character }).eq("id", p.id);
-        i++;
-        // Небольшая задержка для стабильности
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
+      // Update all players simultaneously
+      await Promise.all(
+        players.map(p =>
+          supabase.from("players").update({ character: result.characters[p.id] }).eq("id", p.id)
+        )
+      );
 
       await supabase.from("messages").insert({ room_id: room.id, kind: "system", content: "Игра началась! Изучите свои карточки." });
-      toast.success("Все готово!");
+      toast.success("Готово! Все персонажи сгенерированы!");
     } catch (e: any) {
       toast.error(e.message);
     } finally {

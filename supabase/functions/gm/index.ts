@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "[https://deno.land/std@0.168.0/http/server.ts](https://deno.land/std@0.168.0/http/server.ts)";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,25 +8,25 @@ const corsHeaders = {
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_API_KEY");
 const MODEL = "gemini-1.5-flash";
 
-async function callAI(systemPrompt: string, userPrompt: string, schema?: any) {
-  // Добавляем инструкцию для JSON в промпт если есть schema
-  let fullPrompt = userPrompt;
-  if (schema) {
-    fullPrompt = `Ответь ТОЛЬКО валидным JSON без markdown форматирования. ${userPrompt}`;
-  }
-
+async function callAI(systemPrompt: string, userPrompt: string, responseSchema?: any) {
   const body: any = {
+    system_instruction: {
+      parts: [{ text: systemPrompt }]
+    },
     contents: [
-      { role: "user", parts: [{ text: systemPrompt + "\n\n" + fullPrompt }] },
+      { role: "user", parts: [{ text: userPrompt }] },
     ],
     generationConfig: {
       temperature: 0.8,
       maxOutputTokens: 8192,
+      // Включаем строгий режим JSON
       responseMimeType: "application/json",
+      // Если передана схема, Gemini будет строго ей следовать
+      responseSchema: responseSchema?.parameters 
     },
   };
 
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GOOGLE_API_KEY}`, {
+  const r = await fetch(`[https://generativelanguage.googleapis.com/v1beta/models/$](https://generativelanguage.googleapis.com/v1beta/models/$){MODEL}:generateContent?key=${GOOGLE_API_KEY}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -38,21 +38,25 @@ async function callAI(systemPrompt: string, userPrompt: string, schema?: any) {
     const t = await r.text();
     throw new Error(`AI ${r.status}: ${t}`);
   }
+  
   const data = await r.json();
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  
+  if (!text) throw new Error("Модель вернула пустой ответ");
 
-  if (schema) {
-    // Очищаем JSON от возможных markdown блоков
-    const cleanJson = text?.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    return JSON.parse(cleanJson);
+  try {
+    // При responseMimeType: "application/json" блоки ```json не приходят
+    return JSON.parse(text);
+  } catch (e) {
+    console.error("Ошибка парсинга JSON:", text);
+    throw new Error("Ошибка в структуре данных ИИ");
   }
-  return text;
 }
 
-// ---------- Schemas ----------
+// ---------- Исправленные Schemas (формат для Gemini) ----------
+// Gemini ожидает чистый JSON Schema объект в responseSchema
+
 const catastropheSchema = {
-  name: "create_scenario",
-  description: "Сгенерировать катастрофу и параметры бункера",
   parameters: {
     type: "object",
     properties: {
@@ -68,8 +72,8 @@ const catastropheSchema = {
       bunker: {
         type: "object",
         properties: {
-          capacity: { type: "integer" },
-          food_months: { type: "integer" },
+          capacity: { type: "number" },
+          food_months: { type: "number" },
           objects: { type: "array", items: { type: "string" } },
           description: { type: "string" },
         },
@@ -77,54 +81,39 @@ const catastropheSchema = {
       },
     },
     required: ["catastrophe", "bunker"],
-  },
+  }
 };
 
 const characterSchema = {
-  name: "create_character",
-  description: "Сгенерировать персонажа для игры Бункер",
   parameters: {
     type: "object",
     properties: {
-      gender_age: { type: "string", description: "Пол (преимущественно бисексуальной ориентации, с небольшими отклонениями) и возраст, например 'Мужчина (би), 34 года'" },
-      profession: { type: "string", description: "Профессия + краткое пояснение" },
-      health: { type: "string", description: "Состояние здоровья (менее смертельное)" },
-      phobia: { type: "string", description: "Фобия" },
-      baggage: { type: "string", description: "Один предмет багажа" },
-      hobby: { type: "string", description: "Хобби" },
-      traits: { type: "array", items: { type: "string" }, description: "Особенности характера (количество плохих зависит от сложности)" },
-      abilities: { type: "array", items: { type: "string" }, description: "Две спец-способности из 5 доступных" },
-      image_prompt: { type: "string", description: "Детальный промпт на английском для генерации реалистичного фото (портрета) этого персонажа. Опиши внешность, возраст, пол, одежду в стиле постапокалипсиса/бункера." },
+      gender_age: { type: "string" },
+      profession: { type: "string" },
+      health: { type: "string" },
+      phobia: { type: "string" },
+      baggage: { type: "string" },
+      hobby: { type: "string" },
+      traits: { type: "array", items: { type: "string" } },
+      ability: { type: "string" },
     },
-    required: ["gender_age", "profession", "health", "phobia", "baggage", "hobby", "traits", "abilities", "image_prompt"],
-  },
-};
-
-const eventSituationSchema = {
-  name: "create_situation",
-  description: "Создать завязку события/угрозы для бункера",
-  parameters: {
-    type: "object",
-    properties: {
-      situation: { type: "string", description: "Атмосферное описание завязки. Например: 'Кто-то яростно стучит в шлюзовую дверь снаружи. Кого мы отправим на разведку?'" },
-    },
-    required: ["situation"],
-  },
+    required: ["gender_age", "profession", "health", "phobia", "baggage", "hobby", "traits", "ability"],
+  }
 };
 
 const eventSchema = {
-  name: "resolve_event",
-  description: "Разрешить исход уже произошедшего события на основе характеристик игрока",
   parameters: {
     type: "object",
     properties: {
-      analysis: { type: "string", description: "Анализ: почему игрок справился или провалился, опираясь на его здоровье, возраст, профессию и черты." },
-      outcome: { type: "string", enum: ["success", "fail", "death"] },
-      narration: { type: "string", description: "Драматическое описание исхода" },
+      difficulty: { type: "string" },
+      situation: { type: "string" },
+      analysis: { type: "string" },
+      outcome: { type: "string" },
+      narration: { type: "string" },
       effect: {
         type: "object",
         properties: {
-          food_delta: { type: "integer" },
+          food_delta: { type: "number" },
           health_change: { type: "string" },
           bunker_change: { type: "string" },
           player_dies: { type: "boolean" },
@@ -132,87 +121,74 @@ const eventSchema = {
         required: ["food_delta", "health_change", "bunker_change", "player_dies"],
       },
     },
-    required: ["analysis", "outcome", "narration", "effect"],
-  },
+    required: ["difficulty", "situation", "analysis", "outcome", "narration", "effect"],
+  }
 };
 
 const epilogueSchema = {
-  name: "write_epilogue",
-  description: "Финальный вердикт и эпилог на 5 лет",
   parameters: {
     type: "object",
     properties: {
-      verdict: { type: "string", enum: ["survived", "perished"] },
-      analysis: { type: "string", description: "Краткий анализ навыков выживших" },
-      epilogue: { type: "string", description: "История жизни в бункере на 5 лет, с причинами смертей если необходимо. Атмосферно, мрачно." },
+      verdict: { type: "string" },
+      analysis: { type: "string" },
+      epilogue: { type: "string" },
     },
     required: ["verdict", "analysis", "epilogue"],
-  },
+  }
 };
 
 // ---------- Handler ----------
-const SYSTEM = `Ты — Game Master игры «Бункер». Атмосферный, реалистичный, лаконичный стиль. Только русский язык. Не принимай решения за игроков — только обрабатывай механику и описывай мир. 
-Создавай разнообразных, но реалистичных персонажей (избегай совсем нелепых абсурдных сочетаний, старайся соблюдать жизненную логику). Профессии, хобби, фобии и способности должны быть креативными и провокационными для дебатов, но возможными в реальном мире.`;
+const SYSTEM = `Ты — Game Master игры «Бункер». Твой стиль: мрачный, постапокалиптический, лаконичный. Только русский язык.
+Твоя задача — генерировать данные строго по запросу. Давай сложные пояснения к медицинским или техническим терминам в скобках.
+Если создаешь персонажа, делай его уникальным и противоречивым.`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     if (!GOOGLE_API_KEY) throw new Error("GOOGLE_API_KEY not set");
-    const { action, payload } = await req.json();
+    
+    const body = await req.json();
+    const { action, payload } = body;
 
     let result: any;
 
+    // Используем system_instruction вместо склеивания строк для лучшего качества
     if (action === "scenario") {
-      const diffInfo = payload?.difficulty === "hard" ? "Условия бункера очень плохие, мало еды." : payload?.difficulty === "easy" ? "Условия бункера хорошие, много еды." : "Условия бункера средние.";
       result = await callAI(
         SYSTEM,
-        `Сгенерируй РЕАЛИСТИЧНУЮ катастрофу (экологическая, техногенная, эпидемия, война и т.п. Без пришельцев и магии) и параметры бункера для ${payload?.players ?? 6}-${(payload?.players ?? 6) + 2} игроков. Сложность: ${payload?.difficulty ?? "normal"}. ${diffInfo} Бункер: вместимость 50-70% от числа игроков, 2 случайных объекта.`,
+        `Сгенерируй катастрофу и бункер для группы из ${payload?.players ?? 6} человек. Вместимость бункера должна быть меньше количества игроков (примерно на 30-40%).`,
         catastropheSchema
       );
     } else if (action === "character") {
-      const diffInfo = payload?.difficulty === "hard" ? "Дай персонажу 3-4 плохие характеристики (здоровье, фобии, черты)." : payload?.difficulty === "easy" ? "Дай персонажу 1-2 плохие характеристики. Сделай карточку менее смертельной." : "Дай персонажу 2-3 плохие характеристики.";
       result = await callAI(
         SYSTEM,
-        `Сгенерируй уникального персонажа. ${diffInfo} Пол и ориентация: преимущественно бисексуалы с небольшими отклонениями. 
-        ВНИМАНИЕ НА ЛОГИКУ: возраст, профессия и здоровье должны быть связаны. Если персонаж старше 50 лет, он НЕ МОЖЕТ быть полностью здоровым (обязательно добавь возрастные заболевания, хронические болезни или проблемы с суставами/сердцем). Молодые могут иметь случайные травмы или болезни. 
-        Выдай ровно ДВЕ спец-способности из этого списка 5 способностей: 1. Обмен любой своей характеристики с другим игроком. 2. Любовная связь (если один изгнан/убит, второй уходит за ним). 3. Узнать одну скрытую характеристику любого игрока. 4. Иммунитет к одному событию/катастрофе. 5. Украсть предмет из бункера. Ник игрока: ${payload?.nickname ?? "Игрок"}.`,
+        `Создай персонажа. Катастрофа: ${JSON.stringify(payload?.catastrophe)}. Ник: ${payload?.nickname}. Сделай упор на необычные способности.`,
         characterSchema
       );
-    } else if (action === "event_situation") {
-      const diff = payload?.difficulty ?? "среднее";
-      result = await callAI(
-        SYSTEM,
-        `Сгенерируй только завязку случайного события/угрозы для бункера (сложность: ${diff}). Опиши ситуацию, которая требует действий одного человека. Заверши фразой вроде "Кого отправим?" или "Кто возьмет на себя этот риск?". Состояние бункера: ${JSON.stringify(payload?.bunker)}.`,
-        eventSituationSchema
-      );
     } else if (action === "event") {
-      const gameDiff = payload?.gameDifficulty ?? "normal";
-      const lethality = gameDiff === "hard" ? "повышенная смертность" : gameDiff === "easy" ? "смертность минимальна (очень редко кто-то умирает)" : "средняя смертность";
       result = await callAI(
         SYSTEM,
-        `Разреши исход события. Ситуация: "${payload?.situation}". Выбран игрок ${payload?.player?.nickname}. Его карточка: ${JSON.stringify(payload?.player?.character)}. Сложность игры: ${gameDiff} - ${lethality}. Проанализируй сильные и слабые стороны игрока (профессия, здоровье, возраст, предметы). В зависимости от них высчитай исход: успех, провал или смерть. Опиши последствия.`,
+        `Событие сложности ${payload?.difficulty || 'среднее'}. Игрок: ${JSON.stringify(payload?.player)}. Состояние ресурсов: ${JSON.stringify(payload?.bunker)}.`,
         eventSchema
       );
     } else if (action === "epilogue") {
       result = await callAI(
         SYSTEM,
-        `Игра окончена. Выжившие в бункере: ${JSON.stringify(payload?.survivors)}. Бункер: ${JSON.stringify(payload?.bunker)}. Катастрофа: ${JSON.stringify(payload?.catastrophe)}. Проверь баланс навыков (нужны: врач/медик, инженер/техник, кто-то для пищи). Учти здоровье и фобии. Напиши вердикт и историю на 5 лет.`,
+        `ФИНАЛ. Выжившие: ${JSON.stringify(payload?.survivors)}. Ресурсы: ${JSON.stringify(payload?.bunker)}. Напиши итог их жизни.`,
         epilogueSchema
       );
     } else {
-      throw new Error("Unknown action");
+      throw new Error("Unknown action: " + action);
     }
 
     return new Response(JSON.stringify({ ok: true, result }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
-    console.error("gm error:", e);
-    const msg = e instanceof Error ? e.message : "Unknown";
-    const status = msg.includes("429") ? 429 : msg.includes("402") ? 402 : 500;
-    return new Response(JSON.stringify({ ok: false, error: msg }), {
-      status,
+    console.error("GM Engine Error:", e);
+    return new Response(JSON.stringify({ ok: false, error: e.message }), {
+      status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
