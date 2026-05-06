@@ -7,6 +7,7 @@ import { callGM, callGM_StartGame } from "@/lib/gm";
 import { CharacterCard } from "@/components/CharacterCard";
 import { PlayersList } from "@/components/PlayersList";
 import { GameHistory } from "@/components/GameHistory";
+import { TermHintButton } from "@/components/TermHintButton";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -59,6 +60,7 @@ export default function Room() {
   const [showBunkerModal, setShowBunkerModal] = useState(false);
   const [showGameHistory, setShowGameHistory] = useState(false);
   const [gameEvents, setGameEvents] = useState<any[]>([]);
+  const [kickTargetId, setKickTargetId] = useState("");
 
   useEffect(() => {
     if (!identity || identity.roomCode !== code) {
@@ -163,13 +165,33 @@ export default function Room() {
         const sit = await callGM("event_situation", { difficulty: room.bunker?.gameDifficulty, bunker: room.bunker, nsfw });
         if (!sit?.situation) throw new Error("AI не смог сгенерировать событие. Пропускаем.");
 
-        let bunker = { ...room.bunker };
-        bunker.voting = { active: true, votes: {}, situation: sit.situation };
+        const bunker = { ...room.bunker };
+        bunker.voting = { active: true, votes: {}, situation: sit.situation, phase: "event" };
         await supabase.from("rooms").update({ current_round: nextRound, bunker }).eq("id", room.id);
       } else {
         await supabase.from("rooms").update({ current_round: nextRound }).eq("id", room.id);
       }
     } catch(e: any) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const hostKickPlayer = async () => {
+    if (!isHost || !kickTargetId) return;
+    const target = players.find((p) => p.id === kickTargetId);
+    if (!target || target.status === "dead") return;
+    setBusy(true);
+    try {
+      await supabase.from("players").update({ status: "dead" }).eq("id", target.id);
+      await supabase.from("messages").insert({
+        room_id: room.id,
+        kind: "event",
+        content: `РЕШЕНИЕ ВЕДУЩЕГО: ${target.nickname} исключен(а) из бункера.`,
+      });
+      setKickTargetId("");
+    } catch (e: any) {
       toast.error(e.message);
     } finally {
       setBusy(false);
@@ -192,26 +214,40 @@ export default function Room() {
       let finalTargetId = targetIds[Math.floor(Math.random() * targetIds.length)] || alivePlayers[Math.floor(Math.random() * alivePlayers.length)]?.id;
       const target = players.find((p) => p.id === finalTargetId);
       if (!target) throw new Error("Цель не найдена");
-
-      const ev = await callGM("event", {
-        situation: room.bunker.voting.situation,
-        player: { nickname: target.nickname, character: target.character },
-        bunker: room.bunker,
-        nsfw: room.bunker.nsfw
-      });
-
-      let extraText = "";
-      if (ev.effect.player_dies) {
+      const phase = room.bunker.voting.phase || "event";
+      if (phase === "exile") {
         await supabase.from("players").update({ status: "dead" }).eq("id", target.id);
-        extraText = ` ☠️ ${target.nickname} погибает.`;
+        const bunker = { ...room.bunker, voting: { active: false, votes: {}, phase: null } };
+        await supabase
+          .from("rooms")
+          .update({ bunker, current_round: (room.current_round || 1) + 1 })
+          .eq("id", room.id);
+        await supabase.from("messages").insert({
+          room_id: room.id,
+          kind: "event",
+          content: `ГОЛОСОВАНИЕ: ${target.nickname} изгнан(а) из бункера и погибает снаружи.`,
+        });
+      } else {
+        const ev = await callGM("event", {
+          situation: room.bunker.voting.situation,
+          player: { nickname: target.nickname, character: target.character },
+          bunker: room.bunker,
+          nsfw: room.bunker.nsfw
+        });
+
+        let extraText = "";
+        if (ev.effect.player_dies) {
+          await supabase.from("players").update({ status: "dead" }).eq("id", target.id);
+          extraText = ` ☠️ ${target.nickname} погибает.`;
+        }
+
+        const bunker = { ...room.bunker };
+        bunker.voting = { active: false, votes: {}, phase: null };
+        bunker.food_months = Math.max(0, (bunker.food_months || 0) + ev.effect.food_delta);
+        await supabase.from("rooms").update({ bunker }).eq("id", room.id);
+        await supabase.from("messages").insert({ room_id: room.id, kind: "event", content: `ИТОГ: ${ev.narration}${extraText}` });
+        await supabase.from("rooms").update({ current_round: (room.current_round || 1) + 1 }).eq("id", room.id);
       }
-      
-      let bunker = { ...room.bunker };
-      bunker.voting = { active: false, votes: {} };
-      bunker.food_months = Math.max(0, (bunker.food_months || 0) + ev.effect.food_delta);
-      await supabase.from("rooms").update({ bunker }).eq("id", room.id);
-      await supabase.from("messages").insert({ room_id: room.id, kind: "event", content: `ИТОГ: ${ev.narration}${extraText}` });
-      await supabase.from("rooms").update({ current_round: (room.current_round || 1) + 1 }).eq("id", room.id);
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -241,6 +277,11 @@ export default function Room() {
 
   const playing = room.status === "playing";
   const finished = room.status === "finished";
+  const shouldShowHint = (key: string, value: any) => {
+    if (typeof value !== "string") return key === "phobia";
+    const lower = value.toLowerCase();
+    return key === "phobia" || lower.includes("(") || value.length > 28;
+  };
 
   return (
     <main className="min-h-screen bg-background text-foreground selection:bg-primary/30">
@@ -289,8 +330,28 @@ export default function Room() {
                    {!room.bunker?.voting?.active ? (
                      <Button className="w-full stencil" variant="outline" onClick={endRound} disabled={busy}>СЛЕД. РАУНД ({room.current_round})</Button>
                    ) : (
-                     <Button className="w-full bg-warning text-black stencil" onClick={resolveVoting} disabled={busy}>ЗАВЕРШИТЬ СОБЫТИЕ</Button>
+                     <Button className="w-full bg-warning text-black stencil" onClick={resolveVoting} disabled={busy}>
+                       {room?.bunker?.voting?.phase === "exile" ? "ЗАВЕРШИТЬ ГОЛОСОВАНИЕ" : "ЗАВЕРШИТЬ СОБЫТИЕ"}
+                     </Button>
                    )}
+                   <div className="space-y-2 mt-2 p-2 border border-destructive/30 bg-destructive/5">
+                     <div className="stencil text-[10px] text-destructive">ИСКЛЮЧЕНИЕ ПО РЕШЕНИЮ ВЕДУЩЕГО</div>
+                     <Select value={kickTargetId} onValueChange={setKickTargetId}>
+                       <SelectTrigger className="h-8 bg-black/40">
+                         <SelectValue placeholder="Выберите игрока" />
+                       </SelectTrigger>
+                       <SelectContent>
+                         {alivePlayers
+                           .filter((p) => p.id !== me?.id)
+                           .map((p) => (
+                             <SelectItem key={p.id} value={p.id}>{p.nickname}</SelectItem>
+                           ))}
+                       </SelectContent>
+                     </Select>
+                     <Button className="w-full bg-destructive stencil" onClick={hostKickPlayer} disabled={busy || !kickTargetId}>
+                       ИСКЛЮЧИТЬ ИГРОКА
+                     </Button>
+                   </div>
                    {alivePlayers.length <= (room.capacity || 0) && (
                       <Button className="w-full bg-destructive stencil" onClick={finish} disabled={busy}><Trophy className="w-4 h-4 mr-2" /> ФИНАЛ</Button>
                    )}
@@ -362,7 +423,17 @@ export default function Room() {
                            <TableCell className="font-bold text-primary">{p.nickname} {p.status === "dead" && "☠️"}</TableCell>
                            {FIELDS.map(f => (
                              <TableCell key={f.key} className="text-[11px]">
-                               {rev[f.key] ? <span className="text-gray-200">{Array.isArray(char[f.key]) ? char[f.key].join(" • ") : char[f.key]}</span> : <span className="text-white/10 italic">СКРЫТО</span>}
+                               {rev[f.key] ? (
+                                <span className="text-gray-200 inline-flex items-center gap-2">
+                                  <span>{Array.isArray(char[f.key]) ? char[f.key].join(" • ") : char[f.key]}</span>
+                                  {shouldShowHint(f.key, Array.isArray(char[f.key]) ? char[f.key].join(" • ") : char[f.key]) && (
+                                    <TermHintButton
+                                      label={f.label}
+                                      value={String(Array.isArray(char[f.key]) ? char[f.key].join(" • ") : char[f.key])}
+                                    />
+                                  )}
+                                </span>
+                               ) : <span className="text-white/10 italic">СКРЫТО</span>}
                              </TableCell>
                            ))}
                          </TableRow>
@@ -432,9 +503,15 @@ export default function Room() {
               )}
               <div className="p-6 space-y-4">
                 {!room?.bunker?.voting?.image_prompt && (
-                  <h2 className="text-2xl font-stencil text-warning text-center uppercase flicker">ЧРЕЗВЫЧАЙНАЯ СИТУАЦИЯ</h2>
+                  <h2 className="text-2xl font-stencil text-warning text-center uppercase flicker">
+                    {room?.bunker?.voting?.phase === "exile" ? "ГОЛОСОВАНИЕ ЗА ИЗГНАНИЕ" : "ЧРЕЗВЫЧАЙНАЯ СИТУАЦИЯ"}
+                  </h2>
                 )}
-                <div className="text-center italic text-gray-200 text-base">« {room?.bunker?.voting?.situation} »</div>
+                <div className="text-center italic text-gray-200 text-base">
+                  {room?.bunker?.voting?.phase === "exile"
+                    ? "Выберите наименее полезного участника для текущего раунда."
+                    : `« ${room?.bunker?.voting?.situation} »`}
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                    {alivePlayers.map(p => {
                       const votesCount = Object.values(room.bunker?.voting?.votes || {}).filter(id => id === p.id).length;

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Eye, Lock, Zap, ChevronDown, ChevronUp, User } from "lucide-react";
 import { Identity } from "@/lib/identity";
+import { TermHintButton } from "@/components/TermHintButton";
 import {
   Select,
   SelectContent,
@@ -89,13 +90,34 @@ export function CharacterCard({
     if (Array.isArray(val)) return val.join(" • ");
     return String(val ?? "—");
   };
+  const shouldShowHint = (key: string, value: any) => {
+    if (typeof value !== "string") return key === "phobia";
+    const lower = value.toLowerCase();
+    return key === "phobia" || lower.includes("(") || value.length > 28;
+  };
 
   const reveal = async (key: string, label: string, val: any) => {
     if (revealing) return;
     setRevealing(key);
     try {
+      const round = room?.current_round || 1;
+      const revealTracker = room?.bunker?.reveal_tracker || {};
+      const roundTracker = revealTracker[String(round)] || {};
+      const usedInRound = Number(roundTracker[identity.playerId] || 0);
+      if (usedInRound >= 2) {
+        throw new Error("В этом раунде уже раскрыто максимум 2 характеристики");
+      }
+
       const newRevealed = { ...revealed, [key]: true };
       await supabase.from("players").update({ revealed: newRevealed }).eq("id", identity.playerId);
+
+      const newRoundTracker = { ...roundTracker, [identity.playerId]: usedInRound + 1 };
+      const newRevealTracker = { ...revealTracker, [String(round)]: newRoundTracker };
+      await supabase
+        .from("rooms")
+        .update({ bunker: { ...(room?.bunker || {}), reveal_tracker: newRevealTracker } })
+        .eq("id", roomId);
+
       await supabase.from("messages").insert({
         room_id: roomId,
         kind: "reveal",
@@ -235,6 +257,8 @@ export function CharacterCard({
   const needsTarget = (type: string) => type === "SPY" || type === "STEAL";
   const needsObject = (type: string) => type === "UPGRADE";
   const otherPlayers = allPlayers.filter(p => p.id !== identity.playerId && p.status !== "dead");
+  const round = room?.current_round || 1;
+  const usedInRound = Number(room?.bunker?.reveal_tracker?.[String(round)]?.[identity.playerId] || 0);
 
   return (
     <div className="space-y-3">
@@ -346,6 +370,9 @@ export function CharacterCard({
         <div className="stencil text-[9px] text-primary/60 mb-3 flex items-center gap-2">
           <Lock className="w-3 h-3" /> СЕКРЕТНОЕ ДОСЬЕ
         </div>
+        <div className="text-[10px] text-muted-foreground mb-3">
+          Раунд {round}: раскрыто {usedInRound}/2 характеристик
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {FIELDS.map(({ key, label, icon }) => {
             const val = character[key];
@@ -368,14 +395,19 @@ export function CharacterCard({
                       {isRevealed && <span className="text-primary ml-1">✓</span>}
                     </div>
                     <div className="text-sm mt-1 break-words leading-snug font-medium text-white">
-                      {renderValue(key, val)}
+                      <span className="inline-flex items-center gap-2">
+                        <span>{renderValue(key, val)}</span>
+                        {shouldShowHint(key, val) && (
+                          <TermHintButton label={label} value={renderValue(key, val)} />
+                        )}
+                      </span>
                     </div>
                   </div>
                   {!isRevealed ? (
                     <Button
                       size="sm"
                       onClick={() => reveal(key, label, val)}
-                      disabled={revealing === key || disabled}
+                      disabled={revealing === key || disabled || usedInRound >= 2}
                       className="shrink-0 h-6 px-2 text-[9px] stencil bg-primary/80 hover:bg-primary text-black"
                     >
                       {revealing === key ? "..." : <><Eye className="w-3 h-3 mr-1" />РАСКРЫТЬ</>}

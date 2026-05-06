@@ -70,6 +70,28 @@ async function callAI(systemPrompt: string, userPrompt: string, retries = 3): Pr
   }
 }
 
+function simplifyText(value: any, maxWords = 7): any {
+  if (typeof value !== "string") return value;
+  const noParens = value.replace(/\([^)]*\)/g, "").replace(/\s+/g, " ").trim();
+  const words = noParens.split(" ").filter(Boolean);
+  return words.slice(0, maxWords).join(" ").trim();
+}
+
+function normalizeCharacter(character: any) {
+  if (!character || typeof character !== "object") return character;
+  return {
+    ...character,
+    profession: simplifyText(character.profession),
+    health: simplifyText(character.health),
+    phobia: simplifyText(character.phobia),
+    baggage: simplifyText(character.baggage),
+    hobby: simplifyText(character.hobby),
+    traits: Array.isArray(character.traits)
+      ? character.traits.map((t: string) => simplifyText(t, 5))
+      : character.traits,
+  };
+}
+
 // ─── BATCH START GAME ────────────────────────────────────────────────────────
 export async function callGM_StartGame(payload: {
   players: { id: string; nickname: string }[];
@@ -78,6 +100,7 @@ export async function callGM_StartGame(payload: {
 }): Promise<{ scenario: any; characters: Record<string, any> }> {
   const { players, difficulty, nsfw } = payload;
   const cardsCount = difficulty === "easy" ? 4 : difficulty === "hard" ? 1 : 2;
+  const targetCapacity = Math.max(1, Math.floor(players.length / 2));
 
   const nsfwSystem = nsfw
     ? `РЕЖИМ 18+: Ты работаешь в режиме для взрослых. Создавай персонажей с:
@@ -98,6 +121,9 @@ ${nsfwSystem}
 Игроки: ${players.map(p => p.nickname).join(", ")}.
 Каждому игроку ровно ${cardsCount} спец-карты(ы).
 
+ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА ДЛЯ СЦЕНАРИЯ:
+⚠️ Вместимость бункера ДОЛЖНА БЫТЬ ровно ${targetCapacity} (половина от ${players.length} игроков, округление вниз).
+
 ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА ДЛЯ ВОЗРАСТА И ПОЛА:
 ⚠️ ОСОБО ВАЖНО: Каждый персонаж ДОЛЖЕН ИМЕТЬ РАЗНЫЙ ВОЗРАСТ!
 - Генерируй возраста в разных диапазонах: ${getAgeExamples(players.length)}
@@ -110,6 +136,10 @@ ${nsfwSystem}
 ⚠️ ВСЕ ХАРАКТЕРИСТИКИ ДОЛЖНЫ БЫТЬ МАКСИМАЛЬНО КОНКРЕТНЫМИ И СПЕЦИФИЧНЫМИ!
 ⚠️ ХАРАКТЕРИСТИКИ НЕЗАВИСИМЫ - не связывай их между собой!
 ⚠️ РАНДОМИЗМ - каждый персонаж случайно получает ХОР или ПЛОХие характеристики!
+⚠️ ЗАПРЕЩЕНО связывать поля между собой: профессия НЕ должна автоматически влиять на багаж, хобби, здоровье, фобию и т.д.
+⚠️ Делай возможные "нелогичные" сочетания. Это важно для баланса игры.
+⚠️ Формулировки должны быть короткими и понятными: 2-7 слов на каждую характеристику.
+⚠️ Избегай сложных терминов и длинных описаний.
 
 Примеры для ПРОФЕССИИ (конкретная специализация):
 ✅ ХОРОШИЕ: Врач (кардиолог), Инженер (специалист по ГИС), Учитель математики, Повар (шеф-повар), Программист (backend), Стоматолог, Психолог, Летчик
@@ -141,6 +171,7 @@ ${nsfwSystem}
 3. Если ОТРИЦАТЕЛЬНЫЙ: генерируй плохие здоровье, фобию, профессию, хобби, багаж
 4. ЧЕРТЫ ХАРАКТЕРА - всегда 2-3, перемешай положительные и отрицательные
 5. ФОБИЯ и ХОББИ - НЕЗАВИСИМЫ, не связывай с другими характеристиками!
+6. Профессия, багаж и хобби генерируются независимо друг от друга.
 
 ФОРМАТ JSON (точно такой):
 {
@@ -189,10 +220,15 @@ ${nsfwSystem}
 
   const charactersByPlayerId: Record<string, any> = {};
   for (const player of players) {
-    charactersByPlayerId[player.id] = result.characters?.[player.nickname] || null;
+    charactersByPlayerId[player.id] = normalizeCharacter(result.characters?.[player.nickname] || null);
   }
 
-  return { scenario: { catastrophe: result.catastrophe, bunker: result.bunker }, characters: charactersByPlayerId };
+  const bunker = {
+    ...result.bunker,
+    capacity: targetCapacity,
+  };
+
+  return { scenario: { catastrophe: result.catastrophe, bunker }, characters: charactersByPlayerId };
 }
 
 // ─── EVENTS & EPILOGUE ───────────────────────────────────────────────────────
