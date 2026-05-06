@@ -1,6 +1,29 @@
 // GM implementation using Groq API (FREE, fast, generous limits - console.groq.com)
 const GROQ_MODEL = "llama-3.3-70b-versatile"; // Smarter model for better content quality
 
+// Helper function to generate diverse ages
+function generateDiverseAges(playerCount: number): string[] {
+  const ageRanges = [
+    "18-25", "26-35", "36-45", "46-55", "56-65", "66-75"
+  ];
+  const ages: string[] = [];
+  for (let i = 0; i < playerCount; i++) {
+    const rangeIdx = i % ageRanges.length;
+    const range = ageRanges[rangeIdx];
+    const [min, max] = range.split("-").map(Number);
+    const age = Math.floor(Math.random() * (max - min + 1)) + min;
+    ages.push(String(age));
+  }
+  return ages;
+}
+
+// Helper function to generate diverse age examples for prompt
+function getAgeExamples(playerCount: number): string {
+  const genders = ["Мужчина", "Женщина", "Небинарный человек"];
+  const ages = generateDiverseAges(playerCount);
+  return ages.map((age, idx) => `"${genders[idx % genders.length]}, ${age} лет"`).join(", ");
+}
+
 async function callAI(systemPrompt: string, userPrompt: string, retries = 3): Promise<any> {
   const apiKey = import.meta.env.VITE_GROQ_API_KEY;
   if (!apiKey) throw new Error("Groq API ключ не найден. Добавьте VITE_GROQ_API_KEY в .env и Vercel.");
@@ -75,8 +98,16 @@ ${nsfwSystem}
 Игроки: ${players.map(p => p.nickname).join(", ")}.
 Каждому игроку ровно ${cardsCount} спец-карты(ы).
 
+ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА ДЛЯ ВОЗРАСТА И ПОЛА:
+⚠️ ОСОБО ВАЖНО: Каждый персонаж ДОЛЖЕН ИМЕТЬ РАЗНЫЙ ВОЗРАСТ!
+- Генерируй возраста в разных диапазонах: ${getAgeExamples(players.length)}
+- НЕ ставь одинаковые возраста!
+- НЕ повторяй числа (28, 30, и т.д. - они должны быть РАЗНЫМИ)
+- Варьируй пол и возраст: молодой парень, средневозрастная женщина, пожилой мужчина и т.д.
+- Возраст: от 18 до 75 лет, КАЖДЫЙ РАЗНЫЙ
+
 ПРАВИЛА ДЛЯ ХАРАКТЕРИСТИК:
-- gender_age: реалистичный пол и возраст (например "Женщина, 34 года")
+- gender_age: реалистичный пол и РАЗНЫЙ возраст для каждого (например: "Мужчина, 42 года", "Женщина, 19 лет", "Небинарный, 67 лет")
 - profession: конкретная уникальная профессия
 - health: детальное состояние здоровья (не просто "хорошее")
 - phobia: конкретная странная фобия с деталями
@@ -107,8 +138,13 @@ ${nsfwSystem}
     ]
   },
   "characters": {
-    ${players.map(p => `"${p.nickname}": {
-      "gender_age": "Женщина, 28 лет",
+    ${players.map((p, idx) => {
+      const ages = generateDiverseAges(players.length);
+      const genders = ["Мужчина", "Женщина", "Небинарный человек"];
+      const exampleGender = genders[idx % genders.length];
+      const exampleAge = ages[idx];
+      return `"${p.nickname}": {
+      "gender_age": "${exampleGender}, ${exampleAge} лет",
       "profession": "Уникальная профессия",
       "health": "Детальное состояние здоровья",
       "phobia": "Конкретная фобия с деталями",
@@ -118,7 +154,8 @@ ${nsfwSystem}
       "special_cards": [
         {"id": "sc_${p.nickname}_1", "type": "SPY", "title": "Название карты", "description": "Описание эффекта"}
       ]
-    }`).join(",\n    ")}
+    }`;
+    }).join(",\n    ")}
   }
 }`;
 
