@@ -43,7 +43,13 @@ const FIELDS = [
   { key: "phobia", label: "Фобия" },
   { key: "baggage", label: "Багаж" },
   { key: "hobby", label: "Хобби" },
+  { key: "survival_skill", label: "Навык выживания" },
+  { key: "psychology", label: "Психика в кризисе" },
+  { key: "weakness", label: "Слабая сторона" },
+  { key: "catastrophe_fit", label: "Роль в катастрофе" },
   { key: "traits", label: "Особенности" },
+  { key: "strengths", label: "Сильные стороны" },
+  { key: "risks", label: "Риски" },
 ];
 
 export default function Room() {

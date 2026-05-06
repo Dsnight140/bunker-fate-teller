@@ -21,7 +21,13 @@ const FIELDS: { key: string; label: string; icon: string }[] = [
   { key: "phobia",      label: "Фобия",            icon: "😨" },
   { key: "baggage",     label: "Багаж",            icon: "🎒" },
   { key: "hobby",       label: "Хобби",            icon: "🎯" },
+  { key: "survival_skill", label: "Навык выживания", icon: "🪓" },
+  { key: "psychology",   label: "Психика в кризисе", icon: "🧩" },
+  { key: "weakness",     label: "Слабая сторона",    icon: "⚠️" },
+  { key: "catastrophe_fit", label: "Роль в катастрофе", icon: "🌋" },
   { key: "traits",      label: "Черты характера",  icon: "🧠" },
+  { key: "strengths",   label: "Сильные стороны",  icon: "✅" },
+  { key: "risks",       label: "Риски",            icon: "❌" },
 ];
 
 const CARD_TYPE_STYLES: Record<string, string> = {
@@ -142,7 +148,7 @@ export function CharacterCard({
         case "SPY": {
           if (!target) throw new Error("Выберите цель для шпионажа");
           if (target.id === identity.playerId) throw new Error("Нельзя шпионить за собой");
-          const fields = ["profession", "health", "phobia", "baggage", "hobby"];
+          const fields = ["profession", "health", "phobia", "baggage", "hobby", "survival_skill", "psychology", "weakness", "catastrophe_fit", "strengths", "risks"];
           const hidden = fields.filter(f => !target.revealed?.[f]);
           if (hidden.length === 0) throw new Error("У этого игрока уже все раскрыто");
           const randomField = hidden[Math.floor(Math.random() * hidden.length)];

@@ -7,7 +7,13 @@ const LABELS: Record<string, string> = {
   phobia: "Фобия",
   baggage: "Багаж",
   hobby: "Хобби",
+  survival_skill: "Навык выживания",
+  psychology: "Психика в кризисе",
+  weakness: "Слабая сторона",
+  catastrophe_fit: "Роль в катастрофе",
   traits: "Особенности",
+  strengths: "Сильные стороны",
+  risks: "Риски",
   ability: "Способность",
 };
 
